@@ -56,9 +56,50 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
     updateBox: (id, updates) => {
       const now = new Date().toISOString();
       set((state) => {
-        const newBoxes = state.boxes.map((box) =>
-          box.id === id ? { ...box, ...updates, updatedAt: now } : box
-        );
+        const newBoxes = state.boxes.map((box) => {
+          if (box.id !== id) return box;
+          
+          const handoverFields = [
+            'handoverStatus', 'handoverPerson', 'receiverPerson', 
+            'batchNumber', 'abnormalType', 'processStatus', 
+            'processNote', 'handoverNote'
+          ];
+          const hasHandoverUpdates = Object.keys(updates).some(k => handoverFields.includes(k));
+          
+          let updatedBox = { ...box, ...updates, updatedAt: now };
+          
+          if (hasHandoverUpdates && updatedBox.handoverRecords.length > 0) {
+            const lastRecordIndex = updatedBox.handoverRecords.length - 1;
+            const lastRecord = updatedBox.handoverRecords[lastRecordIndex];
+            const isCurrentlyAbnormal = updatedBox.handoverStatus === 'abnormal';
+            
+            updatedBox.handoverRecords = [
+              ...updatedBox.handoverRecords.slice(0, lastRecordIndex),
+              {
+                ...lastRecord,
+                handoverResult: updates.handoverStatus !== undefined ? updates.handoverStatus : lastRecord.handoverResult,
+                handoverPerson: updates.handoverPerson !== undefined ? updates.handoverPerson : lastRecord.handoverPerson,
+                receiverPerson: updates.receiverPerson !== undefined ? updates.receiverPerson : lastRecord.receiverPerson,
+                batchNumber: updates.batchNumber !== undefined ? updates.batchNumber : lastRecord.batchNumber,
+                abnormalType: isCurrentlyAbnormal 
+                  ? (updates.abnormalType !== undefined ? updates.abnormalType : lastRecord.abnormalType)
+                  : '',
+                abnormalNote: isCurrentlyAbnormal && updates.handoverNote !== undefined 
+                  ? updates.handoverNote 
+                  : (!isCurrentlyAbnormal && updates.handoverNote !== undefined ? updates.handoverNote : lastRecord.abnormalNote),
+                processStatus: isCurrentlyAbnormal
+                  ? (updates.processStatus !== undefined ? updates.processStatus : lastRecord.processStatus)
+                  : 'resolved',
+                processNote: isCurrentlyAbnormal
+                  ? (updates.processNote !== undefined ? updates.processNote : lastRecord.processNote)
+                  : '',
+                processedAt: now,
+              },
+            ];
+          }
+          
+          return updatedBox;
+        });
         const newAlerts = runAllChecks(newBoxes);
         saveToLocalStorage(newBoxes);
         return { boxes: newBoxes, alerts: newAlerts };
@@ -147,30 +188,30 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
           const newRecord: HandoverRecord = {
             id: generateId(),
             boxId: box.id,
-            batchNumber: data.batchNumber,
+            batchNumber: data.batchNumber || '',
             handoverResult,
-            handoverPerson: data.handoverPerson,
-            receiverPerson: data.receiverPerson,
-            abnormalType: isAbnormal ? data.abnormalType || '' : '',
-            abnormalNote: isAbnormal ? data.handoverNote || '' : '',
-            processStatus: isAbnormal ? data.processStatus || 'pending' : 'resolved',
-            processNote: isAbnormal ? data.processNote || '' : '',
+            handoverPerson: data.handoverPerson || '',
+            receiverPerson: data.receiverPerson || '',
+            abnormalType: isAbnormal ? (data.abnormalType || '') : '',
+            abnormalNote: isAbnormal ? (data.handoverNote || '') : '',
+            processStatus: isAbnormal ? (data.processStatus || 'pending') : 'resolved',
+            processNote: isAbnormal ? (data.processNote || '') : '',
             handoverTime: now,
             processedAt: now,
-            createdBy: data.handoverPerson,
+            createdBy: data.handoverPerson || '',
           };
 
           return {
             ...box,
             handoverStatus: handoverResult,
-            handoverPerson: data.handoverPerson,
-            receiverPerson: data.receiverPerson,
+            handoverPerson: data.handoverPerson || '',
+            receiverPerson: data.receiverPerson || '',
             handoverTime: now,
-            handoverNote: data.handoverNote || box.handoverNote,
-            batchNumber: data.batchNumber,
-            abnormalType: isAbnormal ? data.abnormalType || '' : '',
-            processStatus: isAbnormal ? data.processStatus || 'pending' : 'resolved',
-            processNote: isAbnormal ? data.processNote || '' : '',
+            handoverNote: isAbnormal ? (data.handoverNote || '') : (data.handoverNote || ''),
+            batchNumber: data.batchNumber || '',
+            abnormalType: isAbnormal ? (data.abnormalType || '') : '',
+            processStatus: isAbnormal ? (data.processStatus || 'pending') : 'resolved',
+            processNote: isAbnormal ? (data.processNote || '') : '',
             handoverRecords: [...box.handoverRecords, newRecord],
             updatedAt: now,
           };
@@ -184,12 +225,21 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
     addHandoverRecord: (boxId, record) => {
       const now = new Date().toISOString();
       set((state) => {
+        const isAbnormal = record.handoverResult === 'abnormal';
         const newRecord: HandoverRecord = {
-          ...record,
           id: generateId(),
           boxId,
+          batchNumber: record.batchNumber || '',
+          handoverResult: record.handoverResult,
+          handoverPerson: record.handoverPerson || '',
+          receiverPerson: record.receiverPerson || '',
+          abnormalType: isAbnormal ? (record.abnormalType || '') : '',
+          abnormalNote: isAbnormal ? (record.abnormalNote || '') : '',
+          processStatus: isAbnormal ? (record.processStatus || 'pending') : 'resolved',
+          processNote: isAbnormal ? (record.processNote || '') : '',
           handoverTime: now,
           processedAt: now,
+          createdBy: record.createdBy || record.handoverPerson || '',
         };
         
         const newBoxes: PropBox[] = state.boxes.map((box) => {
@@ -198,14 +248,14 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
           return {
             ...box,
             handoverStatus: record.handoverResult,
-            handoverPerson: record.handoverPerson,
-            receiverPerson: record.receiverPerson,
+            handoverPerson: record.handoverPerson || '',
+            receiverPerson: record.receiverPerson || '',
             handoverTime: now,
-            handoverNote: record.abnormalNote || box.handoverNote,
-            batchNumber: record.batchNumber,
-            abnormalType: (record.abnormalType || '') as AbnormalType | '',
-            processStatus: record.processStatus,
-            processNote: record.processNote || box.processNote,
+            handoverNote: isAbnormal ? (record.abnormalNote || '') : (record.abnormalNote || ''),
+            batchNumber: record.batchNumber || '',
+            abnormalType: isAbnormal ? (record.abnormalType || '') : '',
+            processStatus: isAbnormal ? (record.processStatus || 'pending') : 'resolved',
+            processNote: isAbnormal ? (record.processNote || '') : '',
             handoverRecords: [...box.handoverRecords, newRecord],
             updatedAt: now,
           };
@@ -228,9 +278,25 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
               : record
           );
           
+          const isLatestRecord = box.handoverRecords.length > 0 && 
+            box.handoverRecords[box.handoverRecords.length - 1].id === recordId;
+          
+          const latestRecord = newRecords[newRecords.length - 1];
+          
           return {
             ...box,
             handoverRecords: newRecords,
+            ...(isLatestRecord ? {
+              handoverStatus: latestRecord.handoverResult,
+              handoverPerson: latestRecord.handoverPerson,
+              receiverPerson: latestRecord.receiverPerson,
+              batchNumber: latestRecord.batchNumber,
+              handoverTime: latestRecord.handoverTime,
+              handoverNote: latestRecord.abnormalNote,
+              abnormalType: latestRecord.abnormalType,
+              processStatus: latestRecord.processStatus,
+              processNote: latestRecord.processNote,
+            } : {}),
             updatedAt: now,
           };
         });
@@ -283,19 +349,50 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
     loadFromStorage: () => {
       const stored = loadFromLocalStorage();
       if (stored && stored.length > 0) {
-        const migrated = stored.map((box) => ({
-          ...box,
-          handoverStatus: box.handoverStatus ?? ('pending' as const),
-          handoverPerson: box.handoverPerson ?? '',
-          receiverPerson: box.receiverPerson ?? '',
-          handoverTime: box.handoverTime ?? '',
-          handoverNote: box.handoverNote ?? '',
-          batchNumber: box.batchNumber ?? '',
-          abnormalType: box.abnormalType ?? '',
-          processStatus: box.processStatus ?? ('pending' as const),
-          processNote: box.processNote ?? '',
-          handoverRecords: box.handoverRecords ?? [],
-        }));
+        const now = new Date().toISOString();
+        const migrated = stored.map((box) => {
+          const migratedBox: PropBox = {
+            id: box.id || generateId(),
+            boxNumber: box.boxNumber ?? '',
+            contentSummary: box.contentSummary ?? '',
+            scene: box.scene ?? '',
+            fragileNote: box.fragileNote ?? '',
+            status: box.status ?? 'pending_pack',
+            supplementNote: box.supplementNote ?? '',
+            responsiblePerson: box.responsiblePerson ?? '',
+            riskLevel: box.riskLevel ?? 'low',
+            needsReturn: box.needsReturn ?? false,
+            returnNote: box.returnNote ?? '',
+            isChecked: box.isChecked ?? false,
+            handoverStatus: box.handoverStatus ?? 'pending',
+            handoverPerson: box.handoverPerson ?? '',
+            receiverPerson: box.receiverPerson ?? '',
+            handoverTime: box.handoverTime ?? '',
+            handoverNote: box.handoverNote ?? '',
+            batchNumber: box.batchNumber ?? '',
+            abnormalType: box.abnormalType ?? '',
+            processStatus: box.processStatus ?? 'pending',
+            processNote: box.processNote ?? '',
+            handoverRecords: (box.handoverRecords ?? []).map((record) => ({
+              id: record.id || generateId(),
+              boxId: record.boxId || box.id,
+              batchNumber: record.batchNumber ?? '',
+              handoverResult: record.handoverResult ?? 'completed',
+              handoverPerson: record.handoverPerson ?? '',
+              receiverPerson: record.receiverPerson ?? '',
+              abnormalType: record.abnormalType ?? '',
+              abnormalNote: record.abnormalNote ?? '',
+              processStatus: record.processStatus ?? 'resolved',
+              processNote: record.processNote ?? '',
+              handoverTime: record.handoverTime ?? now,
+              processedAt: record.processedAt ?? now,
+              createdBy: record.createdBy ?? record.handoverPerson ?? '',
+            })),
+            createdAt: box.createdAt ?? now,
+            updatedAt: box.updatedAt ?? now,
+          };
+          return migratedBox;
+        });
         const alerts = runAllChecks(migrated);
         set({ boxes: migrated, alerts });
       } else {
