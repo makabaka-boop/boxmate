@@ -19,6 +19,10 @@ export function DetailEditor() {
   const [hasChanges, setHasChanges] = useState(false);
   const prevActiveBoxIdRef = useRef<string | null>(null);
   const [showNewHandoverForm, setShowNewHandoverForm] = useState(false);
+  const [isAddingScene, setIsAddingScene] = useState(false);
+  const [isAddingPerson, setIsAddingPerson] = useState(false);
+  const [newSceneName, setNewSceneName] = useState('');
+  const [newPersonName, setNewPersonName] = useState('');
   const [newHandoverRecord, setNewHandoverRecord] = useState<Partial<HandoverRecord>>({
     batchNumber: '',
     handoverResult: 'completed',
@@ -71,21 +75,23 @@ export function DetailEditor() {
         abnormalType: '',
         processStatus: 'pending',
         processNote: '',
+        handoverNote: '',
       });
       setHasChanges(true);
       return;
     }
 
-    addHandoverRecord(activeBox.id, {
-      batchNumber: activeBox.batchNumber,
+    setShowNewHandoverForm(true);
+    setNewHandoverRecord({
+      batchNumber: activeBox.batchNumber || '',
       handoverResult: status,
-      handoverPerson: activeBox.handoverPerson,
-      receiverPerson: activeBox.receiverPerson,
-      abnormalType: status === 'abnormal' ? activeBox.abnormalType : '',
-      abnormalNote: status === 'abnormal' ? activeBox.handoverNote : '',
-      processStatus: status === 'abnormal' ? activeBox.processStatus : 'resolved',
-      processNote: status === 'abnormal' ? activeBox.processNote : '',
-      createdBy: activeBox.handoverPerson || activeBox.responsiblePerson,
+      handoverPerson: activeBox.handoverPerson || '',
+      receiverPerson: activeBox.receiverPerson || '',
+      abnormalType: status === 'abnormal' ? activeBox.abnormalType || '' : '',
+      abnormalNote: status === 'abnormal' ? activeBox.handoverNote || '' : '',
+      processStatus: status === 'abnormal' ? 'pending' : 'resolved',
+      processNote: '',
+      createdBy: activeBox.handoverPerson || activeBox.responsiblePerson || '',
     });
     setHasChanges(true);
   };
@@ -160,18 +166,75 @@ export function DetailEditor() {
             <label className="block text-xs font-medium text-slate-600 mb-1">
               上场场次 <span className="text-rose-500">*</span>
             </label>
-            <select
-              value={activeBox.scene}
-              onChange={(e) => handleChange('scene', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            >
-              {scenes.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-              <option value="新增场次...">新增场次...</option>
-            </select>
+            {isAddingScene ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newSceneName}
+                  onChange={(e) => setNewSceneName(e.target.value)}
+                  placeholder="输入新场次名称"
+                  autoFocus
+                  className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newSceneName.trim()) {
+                      handleChange('scene', newSceneName.trim());
+                      setIsAddingScene(false);
+                      setNewSceneName('');
+                    } else if (e.key === 'Escape') {
+                      setIsAddingScene(false);
+                      setNewSceneName('');
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (newSceneName.trim()) {
+                      handleChange('scene', newSceneName.trim());
+                      setIsAddingScene(false);
+                      setNewSceneName('');
+                    }
+                  }}
+                  className="px-3 py-2 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-500"
+                >
+                  确定
+                </button>
+                <button
+                  onClick={() => {
+                    setIsAddingScene(false);
+                    setNewSceneName('');
+                  }}
+                  className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
+                >
+                  取消
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <select
+                  value={scenes.includes(activeBox.scene) ? activeBox.scene : ''}
+                  onChange={(e) => {
+                    if (e.target.value === '__add_new__') {
+                      setIsAddingScene(true);
+                      setNewSceneName('');
+                    } else {
+                      handleChange('scene', e.target.value);
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="" disabled>选择场次</option>
+                  {scenes.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                  <option value="__add_new__">+ 新增场次</option>
+                </select>
+              </div>
+            )}
+            {!isAddingScene && activeBox.scene && !scenes.includes(activeBox.scene) && (
+              <p className="text-xs text-slate-500 mt-1">当前: {activeBox.scene}</p>
+            )}
           </div>
 
           <div className="col-span-2">
@@ -243,18 +306,75 @@ export function DetailEditor() {
             <label className="block text-xs font-medium text-slate-600 mb-1">
               责任人 <span className="text-rose-500">*</span>
             </label>
-            <select
-              value={activeBox.responsiblePerson}
-              onChange={(e) => handleChange('responsiblePerson', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            >
-              {persons.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-              <option value="新增责任人...">新增责任人...</option>
-            </select>
+            {isAddingPerson ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPersonName}
+                  onChange={(e) => setNewPersonName(e.target.value)}
+                  placeholder="输入新责任人姓名"
+                  autoFocus
+                  className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newPersonName.trim()) {
+                      handleChange('responsiblePerson', newPersonName.trim());
+                      setIsAddingPerson(false);
+                      setNewPersonName('');
+                    } else if (e.key === 'Escape') {
+                      setIsAddingPerson(false);
+                      setNewPersonName('');
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (newPersonName.trim()) {
+                      handleChange('responsiblePerson', newPersonName.trim());
+                      setIsAddingPerson(false);
+                      setNewPersonName('');
+                    }
+                  }}
+                  className="px-3 py-2 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-500"
+                >
+                  确定
+                </button>
+                <button
+                  onClick={() => {
+                    setIsAddingPerson(false);
+                    setNewPersonName('');
+                  }}
+                  className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md"
+                >
+                  取消
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <select
+                  value={persons.includes(activeBox.responsiblePerson) ? activeBox.responsiblePerson : ''}
+                  onChange={(e) => {
+                    if (e.target.value === '__add_new__') {
+                      setIsAddingPerson(true);
+                      setNewPersonName('');
+                    } else {
+                      handleChange('responsiblePerson', e.target.value);
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="" disabled>选择责任人</option>
+                  {persons.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                  <option value="__add_new__">+ 新增责任人</option>
+                </select>
+              </div>
+            )}
+            {!isAddingPerson && activeBox.responsiblePerson && !persons.includes(activeBox.responsiblePerson) && (
+              <p className="text-xs text-slate-500 mt-1">当前: {activeBox.responsiblePerson}</p>
+            )}
           </div>
 
           <div>

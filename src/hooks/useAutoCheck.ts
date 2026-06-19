@@ -8,8 +8,10 @@ export const useAutoCheck = () => {
   const checkDuplicateBoxNumbers = (boxes: PropBox[]): Alert | null => {
     const boxNumberMap = new Map<string, string[]>();
     boxes.forEach((box) => {
-      const existing = boxNumberMap.get(box.boxNumber) || [];
-      boxNumberMap.set(box.boxNumber, [...existing, box.id]);
+      const trimmedNumber = box.boxNumber.trim();
+      if (!trimmedNumber) return;
+      const existing = boxNumberMap.get(trimmedNumber) || [];
+      boxNumberMap.set(trimmedNumber, [...existing, box.id]);
     });
     const duplicates: string[] = [];
     boxNumberMap.forEach((ids, number) => {
@@ -35,7 +37,7 @@ export const useAutoCheck = () => {
 
   const checkMissingReturnNotes = (boxes: PropBox[]): Alert | null => {
     const missing = boxes.filter(
-      (box) => box.needsReturn && box.returnNote.trim() === ''
+      (box) => box.needsReturn && box.returnNote.trim() === '' && box.boxNumber.trim() !== ''
     );
     if (missing.length > 0) {
       return {
