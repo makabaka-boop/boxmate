@@ -8,11 +8,13 @@ export const useAutoCheck = () => {
   const checkDuplicateBoxNumbers = (boxes: PropBox[]): Alert | null => {
     const boxNumberMap = new Map<string, string[]>();
     boxes.forEach((box) => {
-      const existing = boxNumberMap.get(box.boxNumber) || [];
-      boxNumberMap.set(box.boxNumber, [...existing, box.id]);
+      const trimmed = (box.boxNumber || '').trim();
+      if (!trimmed) return;
+      const existing = boxNumberMap.get(trimmed) || [];
+      boxNumberMap.set(trimmed, [...existing, box.id]);
     });
     const duplicates: string[] = [];
-    boxNumberMap.forEach((ids, number) => {
+    boxNumberMap.forEach((ids) => {
       if (ids.length > 1) {
         duplicates.push(...ids);
       }
@@ -34,9 +36,13 @@ export const useAutoCheck = () => {
   };
 
   const checkMissingReturnNotes = (boxes: PropBox[]): Alert | null => {
-    const missing = boxes.filter(
-      (box) => box.needsReturn && box.returnNote.trim() === ''
-    );
+    const missing = boxes.filter((box) => {
+      if (!box.needsReturn) return false;
+      if ((box.returnNote || '').trim() !== '') return false;
+      const hasMeaningfulData =
+        (box.boxNumber || '').trim() !== '' || (box.contentSummary || '').trim() !== '';
+      return hasMeaningfulData;
+    });
     if (missing.length > 0) {
       return {
         id: generateId(),
