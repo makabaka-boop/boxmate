@@ -114,6 +114,7 @@ export interface AppActions {
   toggleBoxSelection: (id: string) => void;
   selectAll: () => void;
   clearSelection: () => void;
+  clearSelectionInFilter: () => void;
   batchUpdateStatus: (ids: string[], status: BoxStatus) => void;
   batchUpdateHandover: (ids: string[], handoverStatus: HandoverStatus) => void;
   batchCompleteHandover: (ids: string[], data: BatchHandoverData) => void;

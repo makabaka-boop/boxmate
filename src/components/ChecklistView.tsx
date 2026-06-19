@@ -19,7 +19,7 @@ import { usePropStore } from '@/store/usePropStore';
 import { StatusBadge } from './StatusBadge';
 import { RiskBadge } from './RiskBadge';
 import { HANDOVER_LABELS, HANDOVER_COLORS, CHECKLIST_FILTER_LABELS, ABNORMAL_TYPE_LABELS, ABNORMAL_TYPE_COLORS, PROCESS_STATUS_LABELS, PROCESS_STATUS_COLORS } from '@/types';
-import type { PropBox, HandoverStatus, ChecklistFilterMode, BatchHandoverData } from '@/types';
+import type { PropBox, HandoverStatus, ChecklistFilterMode, BatchHandoverData, AbnormalType } from '@/types';
 
 export function ChecklistView() {
   const { boxes, toggleCheck, updateBox, batchUpdateStatus, checklistFilterMode, setChecklistFilterMode, batchCompleteHandover, addHandoverRecord } = usePropStore();
@@ -35,6 +35,22 @@ export function ChecklistView() {
     receiverPerson: '',
     batchNumber: '',
     handoverNote: '',
+  });
+
+  const [singleHandoverBoxId, setSingleHandoverBoxId] = useState<string | null>(null);
+  const [singleHandoverStatus, setSingleHandoverStatus] = useState<HandoverStatus>('completed');
+  const [singleHandoverData, setSingleHandoverData] = useState<{
+    batchNumber: string;
+    handoverPerson: string;
+    receiverPerson: string;
+    handoverNote: string;
+    abnormalType: AbnormalType | '';
+  }>({
+    batchNumber: '',
+    handoverPerson: '',
+    receiverPerson: '',
+    handoverNote: '',
+    abnormalType: '',
   });
 
   const filteredReturnBoxes = useMemo(() => {
@@ -151,6 +167,27 @@ export function ChecklistView() {
       return;
     }
 
+    const hasBaseInfo =
+      (box.batchNumber || '').trim() !== '' &&
+      (box.handoverPerson || '').trim() !== '' &&
+      (box.receiverPerson || '').trim() !== '';
+    const hasAbnormalInfo =
+      status !== 'abnormal' ||
+      (!!box.abnormalType && (box.handoverNote || '').trim() !== '');
+
+    if (!hasBaseInfo || !hasAbnormalInfo) {
+      setSingleHandoverBoxId(box.id);
+      setSingleHandoverStatus(status);
+      setSingleHandoverData({
+        batchNumber: box.batchNumber || '',
+        handoverPerson: box.handoverPerson || '',
+        receiverPerson: box.receiverPerson || '',
+        handoverNote: box.handoverNote || '',
+        abnormalType: (box.abnormalType || '') as AbnormalType | '',
+      });
+      return;
+    }
+
     addHandoverRecord(box.id, {
       batchNumber: box.batchNumber,
       handoverResult: status,
@@ -162,6 +199,49 @@ export function ChecklistView() {
       processNote: status === 'abnormal' ? box.processNote : '',
       createdBy: box.handoverPerson || box.responsiblePerson,
     });
+  };
+
+  const handleConfirmSingleHandover = () => {
+    if (!singleHandoverBoxId) return;
+    const box = boxes.find((b) => b.id === singleHandoverBoxId);
+    if (!box) return;
+
+    if (
+      !singleHandoverData.batchNumber.trim() ||
+      !singleHandoverData.handoverPerson.trim() ||
+      !singleHandoverData.receiverPerson.trim()
+    ) {
+      alert('请填写交接批次、交接人和接收人');
+      return;
+    }
+    if (singleHandoverStatus === 'abnormal') {
+      if (!singleHandoverData.abnormalType || !singleHandoverData.handoverNote.trim()) {
+        alert('异常交接必须选择异常类型并填写异常说明');
+        return;
+      }
+    }
+
+    updateBox(singleHandoverBoxId, {
+      batchNumber: singleHandoverData.batchNumber,
+      handoverPerson: singleHandoverData.handoverPerson,
+      receiverPerson: singleHandoverData.receiverPerson,
+      handoverNote: singleHandoverData.handoverNote,
+      abnormalType: singleHandoverData.abnormalType,
+    });
+
+    addHandoverRecord(singleHandoverBoxId, {
+      batchNumber: singleHandoverData.batchNumber,
+      handoverResult: singleHandoverStatus,
+      handoverPerson: singleHandoverData.handoverPerson,
+      receiverPerson: singleHandoverData.receiverPerson,
+      abnormalType: singleHandoverStatus === 'abnormal' ? singleHandoverData.abnormalType : '',
+      abnormalNote: singleHandoverStatus === 'abnormal' ? singleHandoverData.handoverNote : '',
+      processStatus: singleHandoverStatus === 'abnormal' ? (box.processStatus || 'pending') : 'resolved',
+      processNote: singleHandoverStatus === 'abnormal' ? (box.processNote || '') : '',
+      createdBy: singleHandoverData.handoverPerson || box.responsiblePerson,
+    });
+
+    setSingleHandoverBoxId(null);
   };
 
   const handleHandoverNoteChange = (boxId: string, note: string) => {
@@ -585,6 +665,138 @@ export function ChecklistView() {
           </div>
         )}
       </div>
+
+      {singleHandoverBoxId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <ClipboardCheck className={singleHandoverStatus === 'abnormal' ? 'text-rose-600' : 'text-teal-600'} size={20} />
+                {singleHandoverStatus === 'abnormal' ? '填写异常交接信息' : '填写交接信息'}
+              </h3>
+              <button
+                onClick={() => setSingleHandoverBoxId(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  交接批次 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={singleHandoverData.batchNumber}
+                  onChange={(e) => setSingleHandoverData({ ...singleHandoverData, batchNumber: e.target.value })}
+                  placeholder="如 BATCH-2026-001"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  交接人 <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={singleHandoverData.handoverPerson}
+                  onChange={(e) => setSingleHandoverData({ ...singleHandoverData, handoverPerson: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="">请选择交接人</option>
+                  <option value="赵管理员">赵管理员</option>
+                  <option value="钱管理员">钱管理员</option>
+                  <option value="孙管理员">孙管理员</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  接收人 <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={singleHandoverData.receiverPerson}
+                  onChange={(e) => setSingleHandoverData({ ...singleHandoverData, receiverPerson: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="">请选择接收人</option>
+                  <option value="仓管小王">仓管小王</option>
+                  <option value="仓管小李">仓管小李</option>
+                  <option value="仓管老张">仓管老张</option>
+                </select>
+              </div>
+
+              {singleHandoverStatus === 'abnormal' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      异常类型 <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={singleHandoverData.abnormalType}
+                      onChange={(e) => setSingleHandoverData({ ...singleHandoverData, abnormalType: e.target.value as AbnormalType | '' })}
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                    >
+                      <option value="">请选择异常类型</option>
+                      {(Object.keys(ABNORMAL_TYPE_LABELS) as AbnormalType[]).map((type) => (
+                        <option key={type} value={type}>{ABNORMAL_TYPE_LABELS[type]}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      异常说明 <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      value={singleHandoverData.handoverNote}
+                      onChange={(e) => setSingleHandoverData({ ...singleHandoverData, handoverNote: e.target.value })}
+                      placeholder="请填写异常详细说明..."
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent resize-none"
+                    />
+                  </div>
+                </>
+              )}
+
+              {singleHandoverStatus !== 'abnormal' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    交接备注
+                  </label>
+                  <textarea
+                    value={singleHandoverData.handoverNote}
+                    onChange={(e) => setSingleHandoverData({ ...singleHandoverData, handoverNote: e.target.value })}
+                    placeholder="填写交接备注（可选）..."
+                    rows={2}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setSingleHandoverBoxId(null)}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmSingleHandover}
+                className={`px-4 py-2 text-sm text-white rounded-md transition-colors font-medium ${
+                  singleHandoverStatus === 'abnormal'
+                    ? 'bg-rose-600 hover:bg-rose-500'
+                    : 'bg-teal-600 hover:bg-teal-500'
+                }`}
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showBatchHandoverModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">

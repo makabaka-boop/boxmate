@@ -3,7 +3,7 @@ import { usePropStore } from '@/store/usePropStore';
 import { StatusBadge } from './StatusBadge';
 import { RiskBadge } from './RiskBadge';
 import { STATUS_LABELS, RISK_LABELS, HANDOVER_LABELS, HANDOVER_COLORS, ABNORMAL_TYPE_LABELS, ABNORMAL_TYPE_COLORS, PROCESS_STATUS_LABELS, PROCESS_STATUS_COLORS } from '@/types';
-import type { BoxStatus, RiskLevel, HandoverStatus, AbnormalType, ProcessStatus, HandoverRecord } from '@/types';
+import type { BoxStatus, RiskLevel, HandoverStatus, AbnormalType, ProcessStatus, HandoverRecord, PropBox } from '@/types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 export function DetailEditor() {
@@ -14,6 +14,7 @@ export function DetailEditor() {
     deleteBox,
     setActiveBox,
     addHandoverRecord,
+    updateHandoverRecord,
   } = usePropStore();
 
   const [hasChanges, setHasChanges] = useState(false);
@@ -58,6 +59,95 @@ export function DetailEditor() {
     setHasChanges(true);
   };
 
+  const handleSceneChange = (value: string) => {
+    if (!activeBox) return;
+    if (value === '__add_new_scene__') {
+      const input = window.prompt('请输入新的场次名称');
+      const trimmed = (input || '').trim();
+      if (!trimmed) return;
+      updateBox(activeBox.id, { scene: trimmed });
+      setHasChanges(true);
+      return;
+    }
+    handleChange('scene', value);
+  };
+
+  const handleResponsiblePersonChange = (value: string) => {
+    if (!activeBox) return;
+    if (value === '__add_new_person__') {
+      const input = window.prompt('请输入新的责任人姓名');
+      const trimmed = (input || '').trim();
+      if (!trimmed) return;
+      updateBox(activeBox.id, { responsiblePerson: trimmed });
+      setHasChanges(true);
+      return;
+    }
+    handleChange('responsiblePerson', value);
+  };
+
+  const getLatestHandoverRecord = () => {
+    if (!activeBox || !activeBox.handoverRecords || activeBox.handoverRecords.length === 0) return null;
+    return activeBox.handoverRecords[activeBox.handoverRecords.length - 1];
+  };
+
+  const handleHandoverFieldChange = (field: 'batchNumber' | 'handoverPerson' | 'receiverPerson' | 'handoverNote' | 'abnormalType' | 'processStatus' | 'processNote', value: string) => {
+    if (!activeBox) return;
+    updateBox(activeBox.id, { [field]: value });
+    setHasChanges(true);
+
+    const latest = getLatestHandoverRecord();
+    const hasMatchingLatest = latest && latest.handoverResult === activeBox.handoverStatus;
+
+    if (hasMatchingLatest) {
+      const recordUpdates: Partial<HandoverRecord> = {};
+      if (field === 'batchNumber') recordUpdates.batchNumber = value;
+      else if (field === 'handoverPerson') recordUpdates.handoverPerson = value;
+      else if (field === 'receiverPerson') recordUpdates.receiverPerson = value;
+      else if (field === 'handoverNote') {
+        if (activeBox.handoverStatus === 'abnormal') recordUpdates.abnormalNote = value;
+      } else if (field === 'abnormalType') {
+        recordUpdates.abnormalType = value as AbnormalType | '';
+      } else if (field === 'processStatus') {
+        recordUpdates.processStatus = value as ProcessStatus;
+      } else if (field === 'processNote') {
+        recordUpdates.processNote = value;
+      }
+
+      if (Object.keys(recordUpdates).length > 0) {
+        updateHandoverRecord(activeBox.id, latest.id, recordUpdates);
+      }
+      return;
+    }
+
+    if (activeBox.handoverStatus === 'pending') return;
+
+    const next = { ...activeBox, [field]: value } as PropBox;
+    const hasBaseInfo =
+      (next.batchNumber || '').trim() !== '' &&
+      (next.handoverPerson || '').trim() !== '' &&
+      (next.receiverPerson || '').trim() !== '';
+
+    if (!hasBaseInfo) return;
+
+    if (next.handoverStatus === 'abnormal') {
+      const hasAbnormalInfo =
+        !!next.abnormalType && (next.handoverNote || '').trim() !== '';
+      if (!hasAbnormalInfo) return;
+    }
+
+    addHandoverRecord(activeBox.id, {
+      batchNumber: next.batchNumber,
+      handoverResult: next.handoverStatus,
+      handoverPerson: next.handoverPerson,
+      receiverPerson: next.receiverPerson,
+      abnormalType: next.handoverStatus === 'abnormal' ? next.abnormalType : '',
+      abnormalNote: next.handoverStatus === 'abnormal' ? next.handoverNote : '',
+      processStatus: next.handoverStatus === 'abnormal' ? next.processStatus : 'resolved',
+      processNote: next.handoverStatus === 'abnormal' ? next.processNote : '',
+      createdBy: next.handoverPerson || next.responsiblePerson,
+    });
+  };
+
   const handleHandoverStatusChange = (status: HandoverStatus) => {
     if (!activeBox) return;
 
@@ -73,6 +163,31 @@ export function DetailEditor() {
         processNote: '',
       });
       setHasChanges(true);
+      return;
+    }
+
+    const hasRequiredInfo =
+      activeBox.batchNumber.trim() !== '' &&
+      activeBox.handoverPerson.trim() !== '' &&
+      activeBox.receiverPerson.trim() !== '';
+
+    if (!hasRequiredInfo) {
+      updateBox(activeBox.id, {
+        handoverStatus: status,
+        processStatus: status === 'abnormal' ? activeBox.processStatus || 'pending' : 'resolved',
+      });
+      setHasChanges(true);
+      alert('已切换交接状态，请补充完整批次/交接人/接收人信息后系统将自动生成交接历史记录。');
+      return;
+    }
+
+    if (status === 'abnormal' && (!activeBox.abnormalType || activeBox.handoverNote.trim() === '')) {
+      updateBox(activeBox.id, {
+        handoverStatus: status,
+        processStatus: activeBox.processStatus || 'pending',
+      });
+      setHasChanges(true);
+      alert('已切换为异常交接，请填写异常类型与异常说明后系统将自动生成异常交接历史记录。');
       return;
     }
 
@@ -162,15 +277,18 @@ export function DetailEditor() {
             </label>
             <select
               value={activeBox.scene}
-              onChange={(e) => handleChange('scene', e.target.value)}
+              onChange={(e) => handleSceneChange(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
+              {!scenes.includes(activeBox.scene) && activeBox.scene && (
+                <option value={activeBox.scene}>{activeBox.scene}</option>
+              )}
               {scenes.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
               ))}
-              <option value="新增场次...">新增场次...</option>
+              <option value="__add_new_scene__">+ 新增场次...</option>
             </select>
           </div>
 
@@ -245,15 +363,18 @@ export function DetailEditor() {
             </label>
             <select
               value={activeBox.responsiblePerson}
-              onChange={(e) => handleChange('responsiblePerson', e.target.value)}
+              onChange={(e) => handleResponsiblePersonChange(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
+              {!persons.includes(activeBox.responsiblePerson) && activeBox.responsiblePerson && (
+                <option value={activeBox.responsiblePerson}>{activeBox.responsiblePerson}</option>
+              )}
               {persons.map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
               ))}
-              <option value="新增责任人...">新增责任人...</option>
+              <option value="__add_new_person__">+ 新增责任人...</option>
             </select>
           </div>
 
@@ -482,7 +603,19 @@ export function DetailEditor() {
                         alert('异常交接必须填写异常类型和异常说明');
                         return;
                       }
-                      addHandoverRecord(activeBox.id, newHandoverRecord as Omit<HandoverRecord, 'id' | 'boxId' | 'handoverTime'>);
+                      const isAbnormal = newHandoverRecord.handoverResult === 'abnormal';
+                      const completeRecord: Omit<HandoverRecord, 'id' | 'boxId' | 'handoverTime' | 'processedAt'> = {
+                        batchNumber: newHandoverRecord.batchNumber || '',
+                        handoverResult: (newHandoverRecord.handoverResult || 'completed') as HandoverStatus,
+                        handoverPerson: newHandoverRecord.handoverPerson || '',
+                        receiverPerson: newHandoverRecord.receiverPerson || '',
+                        abnormalType: isAbnormal ? (newHandoverRecord.abnormalType || '') : '',
+                        abnormalNote: isAbnormal ? (newHandoverRecord.abnormalNote || '') : '',
+                        processStatus: isAbnormal ? (newHandoverRecord.processStatus || 'pending') : 'resolved',
+                        processNote: isAbnormal ? (newHandoverRecord.processNote || '') : '',
+                        createdBy: newHandoverRecord.createdBy || newHandoverRecord.handoverPerson || activeBox.responsiblePerson,
+                      };
+                      addHandoverRecord(activeBox.id, completeRecord);
                       setShowNewHandoverForm(false);
                       setHasChanges(true);
                     }}
@@ -519,7 +652,7 @@ export function DetailEditor() {
                 <input
                   type="text"
                   value={activeBox.batchNumber}
-                  onChange={(e) => handleChange('batchNumber', e.target.value)}
+                  onChange={(e) => handleHandoverFieldChange('batchNumber', e.target.value)}
                   placeholder="交接批次号"
                   disabled={activeBox.handoverStatus === 'pending'}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-slate-50 disabled:text-slate-400"
@@ -533,7 +666,7 @@ export function DetailEditor() {
                 <input
                   type="text"
                   value={activeBox.handoverPerson}
-                  onChange={(e) => handleChange('handoverPerson', e.target.value)}
+                  onChange={(e) => handleHandoverFieldChange('handoverPerson', e.target.value)}
                   placeholder="交接人姓名"
                   disabled={activeBox.handoverStatus === 'pending'}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-slate-50 disabled:text-slate-400"
@@ -547,7 +680,7 @@ export function DetailEditor() {
                 <input
                   type="text"
                   value={activeBox.receiverPerson}
-                  onChange={(e) => handleChange('receiverPerson', e.target.value)}
+                  onChange={(e) => handleHandoverFieldChange('receiverPerson', e.target.value)}
                   placeholder="接收人姓名"
                   disabled={activeBox.handoverStatus === 'pending'}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-slate-50 disabled:text-slate-400"
@@ -574,7 +707,7 @@ export function DetailEditor() {
                     </label>
                     <select
                       value={activeBox.abnormalType || ''}
-                      onChange={(e) => handleChange('abnormalType', e.target.value)}
+                      onChange={(e) => handleHandoverFieldChange('abnormalType', e.target.value)}
                       disabled={activeBox.handoverStatus !== 'abnormal'}
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-slate-50 disabled:text-slate-400"
                     >
@@ -592,7 +725,7 @@ export function DetailEditor() {
                     </label>
                     <select
                       value={activeBox.processStatus}
-                      onChange={(e) => handleChange('processStatus', e.target.value)}
+                      onChange={(e) => handleHandoverFieldChange('processStatus', e.target.value)}
                       disabled={activeBox.handoverStatus !== 'abnormal'}
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-slate-50 disabled:text-slate-400"
                     >
@@ -615,7 +748,7 @@ export function DetailEditor() {
                 </label>
                 <textarea
                   value={activeBox.handoverNote}
-                  onChange={(e) => handleChange('handoverNote', e.target.value)}
+                  onChange={(e) => handleHandoverFieldChange('handoverNote', e.target.value)}
                   placeholder={activeBox.handoverStatus === 'abnormal' ? '详细描述异常情况...' : '交接备注信息...'}
                   rows={2}
                   disabled={activeBox.handoverStatus === 'pending'}
@@ -639,7 +772,7 @@ export function DetailEditor() {
                   </label>
                   <textarea
                     value={activeBox.processNote}
-                    onChange={(e) => handleChange('processNote', e.target.value)}
+                    onChange={(e) => handleHandoverFieldChange('processNote', e.target.value)}
                     placeholder="处理措施或进展..."
                     rows={2}
                     className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"

@@ -88,7 +88,7 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
     },
 
     selectAll: () => {
-      const { boxes, filters } = get();
+      const { boxes, filters, selectedBoxIds } = get();
       const filteredBoxes = boxes
         .filter((b) => !filters.scene || b.scene === filters.scene)
         .filter((b) => !filters.responsiblePerson || b.responsiblePerson === filters.responsiblePerson)
@@ -98,11 +98,28 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
         .filter((b) => !filters.abnormalType || b.abnormalType === filters.abnormalType)
         .filter((b) => !filters.processStatus || b.processStatus === filters.processStatus)
         .filter((b) => !filters.batchNumber || b.batchNumber.includes(filters.batchNumber));
-      set({ selectedBoxIds: filteredBoxes.map((b) => b.id) });
+      const filteredIds = filteredBoxes.map((b) => b.id);
+      const merged = Array.from(new Set([...selectedBoxIds, ...filteredIds]));
+      set({ selectedBoxIds: merged });
     },
 
     clearSelection: () => {
       set({ selectedBoxIds: [] });
+    },
+
+    clearSelectionInFilter: () => {
+      const { boxes, filters, selectedBoxIds } = get();
+      const filteredBoxes = boxes
+        .filter((b) => !filters.scene || b.scene === filters.scene)
+        .filter((b) => !filters.responsiblePerson || b.responsiblePerson === filters.responsiblePerson)
+        .filter((b) => !filters.status || b.status === filters.status)
+        .filter((b) => !filters.riskLevel || b.riskLevel === filters.riskLevel)
+        .filter((b) => !filters.handoverStatus || b.handoverStatus === filters.handoverStatus)
+        .filter((b) => !filters.abnormalType || b.abnormalType === filters.abnormalType)
+        .filter((b) => !filters.processStatus || b.processStatus === filters.processStatus)
+        .filter((b) => !filters.batchNumber || b.batchNumber.includes(filters.batchNumber));
+      const filteredIdSet = new Set(filteredBoxes.map((b) => b.id));
+      set({ selectedBoxIds: selectedBoxIds.filter((id) => !filteredIdSet.has(id)) });
     },
 
     batchUpdateStatus: (ids, status) => {
@@ -184,28 +201,40 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
     addHandoverRecord: (boxId, record) => {
       const now = new Date().toISOString();
       set((state) => {
+        const isAbnormal = record.handoverResult === 'abnormal';
+        const safeRecord = {
+          batchNumber: record.batchNumber ?? '',
+          handoverResult: record.handoverResult ?? 'completed',
+          handoverPerson: record.handoverPerson ?? '',
+          receiverPerson: record.receiverPerson ?? '',
+          abnormalType: (isAbnormal ? (record.abnormalType ?? '') : '') as AbnormalType | '',
+          abnormalNote: isAbnormal ? (record.abnormalNote ?? '') : '',
+          processStatus: isAbnormal ? (record.processStatus ?? 'pending') : 'resolved',
+          processNote: isAbnormal ? (record.processNote ?? '') : '',
+          createdBy: record.createdBy ?? record.handoverPerson ?? '',
+        };
         const newRecord: HandoverRecord = {
-          ...record,
+          ...safeRecord,
           id: generateId(),
           boxId,
           handoverTime: now,
           processedAt: now,
         };
-        
+
         const newBoxes: PropBox[] = state.boxes.map((box) => {
           if (box.id !== boxId) return box;
-          
+
           return {
             ...box,
-            handoverStatus: record.handoverResult,
-            handoverPerson: record.handoverPerson,
-            receiverPerson: record.receiverPerson,
+            handoverStatus: safeRecord.handoverResult,
+            handoverPerson: safeRecord.handoverPerson,
+            receiverPerson: safeRecord.receiverPerson,
             handoverTime: now,
-            handoverNote: record.abnormalNote || box.handoverNote,
-            batchNumber: record.batchNumber,
-            abnormalType: (record.abnormalType || '') as AbnormalType | '',
-            processStatus: record.processStatus,
-            processNote: record.processNote || box.processNote,
+            handoverNote: isAbnormal ? safeRecord.abnormalNote : (box.handoverNote || ''),
+            batchNumber: safeRecord.batchNumber,
+            abnormalType: safeRecord.abnormalType,
+            processStatus: safeRecord.processStatus,
+            processNote: isAbnormal ? safeRecord.processNote : box.processNote,
             handoverRecords: [...box.handoverRecords, newRecord],
             updatedAt: now,
           };
@@ -283,20 +312,51 @@ export const usePropStore = create<AppState & AppActions>((set, get) => {
     loadFromStorage: () => {
       const stored = loadFromLocalStorage();
       if (stored && stored.length > 0) {
-        const migrated = stored.map((box) => ({
-          ...box,
-          handoverStatus: box.handoverStatus ?? ('pending' as const),
-          handoverPerson: box.handoverPerson ?? '',
-          receiverPerson: box.receiverPerson ?? '',
-          handoverTime: box.handoverTime ?? '',
-          handoverNote: box.handoverNote ?? '',
-          batchNumber: box.batchNumber ?? '',
-          abnormalType: box.abnormalType ?? '',
-          processStatus: box.processStatus ?? ('pending' as const),
-          processNote: box.processNote ?? '',
-          handoverRecords: box.handoverRecords ?? [],
-        }));
+        const migrated: PropBox[] = stored.map((box) => {
+          const migratedRecords: HandoverRecord[] = (box.handoverRecords ?? []).map((r) => ({
+            id: r.id ?? generateId(),
+            boxId: r.boxId ?? box.id,
+            batchNumber: r.batchNumber ?? '',
+            handoverResult: r.handoverResult ?? 'completed',
+            handoverPerson: r.handoverPerson ?? '',
+            receiverPerson: r.receiverPerson ?? '',
+            abnormalType: (r.abnormalType ?? '') as HandoverRecord['abnormalType'],
+            abnormalNote: r.abnormalNote ?? '',
+            processStatus: r.processStatus ?? 'pending',
+            processNote: r.processNote ?? '',
+            handoverTime: r.handoverTime ?? new Date().toISOString(),
+            processedAt: r.processedAt ?? r.handoverTime ?? new Date().toISOString(),
+            createdBy: r.createdBy ?? r.handoverPerson ?? '',
+          }));
+          return {
+            id: box.id ?? generateId(),
+            boxNumber: box.boxNumber ?? '',
+            contentSummary: box.contentSummary ?? '',
+            scene: box.scene ?? '',
+            fragileNote: box.fragileNote ?? '',
+            status: box.status ?? 'pending_pack',
+            supplementNote: box.supplementNote ?? '',
+            responsiblePerson: box.responsiblePerson ?? '',
+            riskLevel: box.riskLevel ?? 'low',
+            needsReturn: box.needsReturn ?? false,
+            returnNote: box.returnNote ?? '',
+            isChecked: box.isChecked ?? false,
+            handoverStatus: box.handoverStatus ?? 'pending',
+            handoverPerson: box.handoverPerson ?? '',
+            receiverPerson: box.receiverPerson ?? '',
+            handoverTime: box.handoverTime ?? '',
+            handoverNote: box.handoverNote ?? '',
+            batchNumber: box.batchNumber ?? '',
+            abnormalType: (box.abnormalType ?? '') as PropBox['abnormalType'],
+            processStatus: box.processStatus ?? 'pending',
+            processNote: box.processNote ?? '',
+            handoverRecords: migratedRecords,
+            createdAt: box.createdAt ?? new Date().toISOString(),
+            updatedAt: box.updatedAt ?? box.createdAt ?? new Date().toISOString(),
+          };
+        });
         const alerts = runAllChecks(migrated);
+        saveToLocalStorage(migrated);
         set({ boxes: migrated, alerts });
       } else {
         const alerts = runAllChecks(mockBoxes);
