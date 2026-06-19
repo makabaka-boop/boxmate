@@ -8,8 +8,10 @@ export const useAutoCheck = () => {
   const checkDuplicateBoxNumbers = (boxes: PropBox[]): Alert | null => {
     const boxNumberMap = new Map<string, string[]>();
     boxes.forEach((box) => {
-      const existing = boxNumberMap.get(box.boxNumber) || [];
-      boxNumberMap.set(box.boxNumber, [...existing, box.id]);
+      const num = box.boxNumber.trim();
+      if (!num) return;
+      const existing = boxNumberMap.get(num) || [];
+      boxNumberMap.set(num, [...existing, box.id]);
     });
     const duplicates: string[] = [];
     boxNumberMap.forEach((ids, number) => {
@@ -35,7 +37,11 @@ export const useAutoCheck = () => {
 
   const checkMissingReturnNotes = (boxes: PropBox[]): Alert | null => {
     const missing = boxes.filter(
-      (box) => box.needsReturn && box.returnNote.trim() === ''
+      (box) => {
+        if (!box.needsReturn) return false;
+        if (box.boxNumber.trim() === '') return false;
+        return box.returnNote.trim() === '';
+      }
     );
     if (missing.length > 0) {
       return {
@@ -52,7 +58,7 @@ export const useAutoCheck = () => {
   const checkHighRiskExcess = (boxes: PropBox[]): Alert | null => {
     const sceneMap = new Map<string, PropBox[]>();
     boxes.forEach((box) => {
-      if (box.riskLevel === 'high') {
+      if (box.riskLevel === 'high' && box.scene.trim()) {
         const existing = sceneMap.get(box.scene) || [];
         sceneMap.set(box.scene, [...existing, box]);
       }
@@ -80,8 +86,10 @@ export const useAutoCheck = () => {
   const checkUnbalancedLoad = (boxes: PropBox[]): Alert | null => {
     const personMap = new Map<string, number>();
     boxes.forEach((box) => {
-      const count = personMap.get(box.responsiblePerson) || 0;
-      personMap.set(box.responsiblePerson, count + 1);
+      const person = box.responsiblePerson.trim();
+      if (!person) return;
+      const count = personMap.get(person) || 0;
+      personMap.set(person, count + 1);
     });
     const counts = Array.from(personMap.values());
     if (counts.length < 2) return null;
@@ -113,7 +121,7 @@ export const useAutoCheck = () => {
 
   const checkCheckedNotHandedOver = (boxes: PropBox[]): Alert | null => {
     const notHanded = boxes.filter(
-      (box) => box.needsReturn && box.isChecked && box.handoverStatus === 'pending'
+      (box) => box.needsReturn && box.isChecked && box.handoverStatus === 'pending' && box.boxNumber.trim() !== ''
     );
     if (notHanded.length > 0) {
       return {
@@ -129,7 +137,7 @@ export const useAutoCheck = () => {
 
   const checkAbnormalWithoutNote = (boxes: PropBox[]): Alert | null => {
     const noNote = boxes.filter(
-      (box) => box.handoverStatus === 'abnormal' && box.handoverNote.trim() === ''
+      (box) => box.handoverStatus === 'abnormal' && box.handoverNote.trim() === '' && box.boxNumber.trim() !== ''
     );
     if (noNote.length > 0) {
       return {

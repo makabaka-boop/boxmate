@@ -1,4 +1,4 @@
-import { Trash2, Save, AlertTriangle, ArrowRightLeft, Layers, UserCheck, User, AlertOctagon, Clock, CheckCircle2, XCircle, Plus, History } from 'lucide-react';
+import { Trash2, Save, AlertTriangle, ArrowRightLeft, Layers, UserCheck, User, AlertOctagon, Clock, CheckCircle2, XCircle, Plus, History, FileText } from 'lucide-react';
 import { usePropStore } from '@/store/usePropStore';
 import { StatusBadge } from './StatusBadge';
 import { RiskBadge } from './RiskBadge';
@@ -54,6 +54,22 @@ export function DetailEditor() {
 
   const handleChange = (field: string, value: string | boolean) => {
     if (!activeBox) return;
+    if (field === 'scene' && value === '__add_new_scene__') {
+      const newScene = prompt('请输入新场次名称：');
+      if (newScene && newScene.trim()) {
+        updateBox(activeBox.id, { scene: newScene.trim() });
+        setHasChanges(true);
+      }
+      return;
+    }
+    if (field === 'responsiblePerson' && value === '__add_new_person__') {
+      const newPerson = prompt('请输入新责任人姓名：');
+      if (newPerson && newPerson.trim()) {
+        updateBox(activeBox.id, { responsiblePerson: newPerson.trim() });
+        setHasChanges(true);
+      }
+      return;
+    }
     updateBox(activeBox.id, { [field]: value });
     setHasChanges(true);
   };
@@ -76,13 +92,30 @@ export function DetailEditor() {
       return;
     }
 
+    const hasRequired =
+      activeBox.batchNumber.trim() &&
+      activeBox.handoverPerson.trim() &&
+      activeBox.receiverPerson.trim();
+
+    if (!hasRequired) {
+      alert('请先通过「新增交接记录」按钮填写交接批次、交接人和接收人后再提交。');
+      return;
+    }
+
+    if (status === 'abnormal') {
+      if (!activeBox.abnormalType || !activeBox.handoverNote.trim()) {
+        alert('异常交接必须先填写异常类型和异常说明，请通过「新增交接记录」按钮提交。');
+        return;
+      }
+    }
+
     addHandoverRecord(activeBox.id, {
       batchNumber: activeBox.batchNumber,
       handoverResult: status,
       handoverPerson: activeBox.handoverPerson,
       receiverPerson: activeBox.receiverPerson,
       abnormalType: status === 'abnormal' ? activeBox.abnormalType : '',
-      abnormalNote: status === 'abnormal' ? activeBox.handoverNote : '',
+      abnormalNote: activeBox.handoverNote || '',
       processStatus: status === 'abnormal' ? activeBox.processStatus : 'resolved',
       processNote: status === 'abnormal' ? activeBox.processNote : '',
       createdBy: activeBox.handoverPerson || activeBox.responsiblePerson,
@@ -170,7 +203,7 @@ export function DetailEditor() {
                   {s}
                 </option>
               ))}
-              <option value="新增场次...">新增场次...</option>
+              <option value="__add_new_scene__">+ 新增场次</option>
             </select>
           </div>
 
@@ -253,7 +286,7 @@ export function DetailEditor() {
                   {p}
                 </option>
               ))}
-              <option value="新增责任人...">新增责任人...</option>
+              <option value="__add_new_person__">+ 新增责任人</option>
             </select>
           </div>
 
@@ -699,10 +732,17 @@ export function DetailEditor() {
                             </span>
                           </div>
                           {record.abnormalNote && (
-                            <p className="text-xs text-rose-600 mt-1">
-                              <AlertTriangle size={10} className="inline mr-1" />
-                              {record.abnormalNote}
-                            </p>
+                            record.handoverResult === 'abnormal' ? (
+                              <p className="text-xs text-rose-600 mt-1">
+                                <AlertTriangle size={10} className="inline mr-1" />
+                                {record.abnormalNote}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-500 mt-1">
+                                <FileText size={10} className="inline mr-1" />
+                                备注: {record.abnormalNote}
+                              </p>
+                            )
                           )}
                           {record.processNote && (
                             <p className="text-xs text-slate-500 mt-1">

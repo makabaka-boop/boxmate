@@ -151,13 +151,30 @@ export function ChecklistView() {
       return;
     }
 
+    const hasRequired =
+      box.batchNumber.trim() &&
+      box.handoverPerson.trim() &&
+      box.receiverPerson.trim();
+
+    if (!hasRequired) {
+      alert('请先通过场次「批量交接」按钮填写交接批次、交接人和接收人后再提交。');
+      return;
+    }
+
+    if (status === 'abnormal') {
+      if (!box.abnormalType || !box.handoverNote.trim()) {
+        alert('异常交接必须先填写异常类型和异常说明，请在详情页或批量交接中补充信息。');
+        return;
+      }
+    }
+
     addHandoverRecord(box.id, {
       batchNumber: box.batchNumber,
       handoverResult: status,
       handoverPerson: box.handoverPerson,
       receiverPerson: box.receiverPerson,
       abnormalType: status === 'abnormal' ? box.abnormalType : '',
-      abnormalNote: status === 'abnormal' ? box.handoverNote : '',
+      abnormalNote: box.handoverNote || '',
       processStatus: status === 'abnormal' ? box.processStatus : 'resolved',
       processNote: status === 'abnormal' ? box.processNote : '',
       createdBy: box.handoverPerson || box.responsiblePerson,
