@@ -1,8 +1,8 @@
-import { Plus, Package, ListChecks, Filter, X, CheckSquare, Square, ArrowRightLeft, Layers, AlertOctagon, ClipboardCheck } from 'lucide-react';
+import { Plus, Package, ListChecks, Filter, X, CheckSquare, Square, ArrowRightLeft, Layers, AlertOctagon, ClipboardCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { usePropStore } from '@/store/usePropStore';
 import { STATUS_LABELS, RISK_LABELS, HANDOVER_LABELS, ABNORMAL_TYPE_LABELS, PROCESS_STATUS_LABELS } from '@/types';
 import type { BoxStatus, RiskLevel, HandoverStatus, AbnormalType, ProcessStatus, BatchHandoverData } from '@/types';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 export function Toolbar() {
   const {
@@ -18,7 +18,6 @@ export function Toolbar() {
     batchCompleteHandover,
     selectAll,
     clearSelection,
-    loadFromStorage,
   } = usePropStore();
 
   const [showBatchHandoverModal, setShowBatchHandoverModal] = useState(false);
@@ -33,10 +32,20 @@ export function Toolbar() {
     processNote: '',
     handoverNote: '',
   });
+  const [showFilters, setShowFilters] = useState(true);
 
-  const scenes = Array.from(new Set(boxes.map((b) => b.scene)));
-  const persons = Array.from(new Set(boxes.map((b) => b.responsiblePerson)));
-  const batchNumbers = Array.from(new Set(boxes.map((b) => b.batchNumber).filter(Boolean)));
+  const scenes = useMemo(
+    () => Array.from(new Set(boxes.map((b) => b.scene).filter(Boolean))),
+    [boxes]
+  );
+  const persons = useMemo(
+    () => Array.from(new Set(boxes.map((b) => b.responsiblePerson).filter(Boolean))),
+    [boxes]
+  );
+  const batchNumbers = useMemo(
+    () => Array.from(new Set(boxes.map((b) => b.batchNumber).filter(Boolean))),
+    [boxes]
+  );
 
   const handleAddBox = () => {
     const hasEmptyBoxNumber = boxes.some((b) => b.boxNumber.trim() === '');
@@ -51,11 +60,11 @@ export function Toolbar() {
     addBox({
       boxNumber: '',
       contentSummary: '',
-      scene: scenes[0] || '第一场',
+      scene: scenes[0] || '',
       fragileNote: '',
       status: 'pending_pack',
       supplementNote: '',
-      responsiblePerson: persons[0] || '责任人',
+      responsiblePerson: persons[0] || '',
       riskLevel: 'low',
       needsReturn: true,
       returnNote: '',
@@ -116,267 +125,301 @@ export function Toolbar() {
     });
   };
 
-  const filteredBoxes = boxes
-    .filter((b) => !filters.scene || b.scene === filters.scene)
-    .filter((b) => !filters.responsiblePerson || b.responsiblePerson === filters.responsiblePerson)
-    .filter((b) => !filters.status || b.status === filters.status)
-    .filter((b) => !filters.riskLevel || b.riskLevel === filters.riskLevel)
-    .filter((b) => !filters.handoverStatus || b.handoverStatus === filters.handoverStatus)
-    .filter((b) => !filters.abnormalType || b.abnormalType === filters.abnormalType)
-    .filter((b) => !filters.processStatus || b.processStatus === filters.processStatus)
-    .filter((b) => !filters.batchNumber || b.batchNumber.includes(filters.batchNumber));
+  const filteredBoxes = useMemo(() => {
+    return boxes
+      .filter((b) => !filters.scene || b.scene === filters.scene)
+      .filter((b) => !filters.responsiblePerson || b.responsiblePerson === filters.responsiblePerson)
+      .filter((b) => !filters.status || b.status === filters.status)
+      .filter((b) => !filters.riskLevel || b.riskLevel === filters.riskLevel)
+      .filter((b) => !filters.handoverStatus || b.handoverStatus === filters.handoverStatus)
+      .filter((b) => !filters.abnormalType || b.abnormalType === filters.abnormalType)
+      .filter((b) => !filters.processStatus || b.processStatus === filters.processStatus)
+      .filter((b) => !filters.batchNumber || b.batchNumber.includes(filters.batchNumber));
+  }, [boxes, filters]);
 
-  const allSelected =
-    selectedBoxIds.length > 0 && filteredBoxes.every((b) => selectedBoxIds.includes(b.id));
-
+  const filteredIds = useMemo(() => new Set(filteredBoxes.map((b) => b.id)), [filteredBoxes]);
+  const selectedInFilter = selectedBoxIds.filter((id) => filteredIds.has(id));
+  const selectedOutOfFilter = selectedBoxIds.filter((id) => !filteredIds.has(id));
+  const allFilteredSelected = filteredBoxes.length > 0 && selectedInFilter.length === filteredBoxes.length;
+  const someFilteredSelected = selectedInFilter.length > 0 && !allFilteredSelected;
   const filteredCount = filteredBoxes.length;
 
   const hasActiveFilters =
-    filters.scene || filters.responsiblePerson || filters.status || filters.riskLevel || 
+    filters.scene || filters.responsiblePerson || filters.status || filters.riskLevel ||
     filters.handoverStatus || filters.abnormalType || filters.processStatus || filters.batchNumber;
 
+  const selectButtonLabel = allFilteredSelected
+    ? `取消全选当前 (${filteredCount})`
+    : someFilteredSelected
+      ? `全选剩余 (${filteredCount - selectedInFilter.length})`
+      : `全选当前 (${filteredCount})`;
+
   return (
-    <div className="bg-primary-900 text-white px-6 py-4 shadow-lg">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-bold tracking-wide flex items-center gap-2">
-            <Package size={22} />
-            道具箱贴签与返场核对系统
-          </h1>
-          <div className="flex bg-primary-800 rounded-lg p-0.5">
+    <div className="bg-primary-900 text-white shadow-lg">
+      <div className="px-4 py-3 md:px-6 md:py-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <h1 className="text-lg font-bold tracking-wide flex items-center gap-2 shrink-0">
+              <Package size={22} />
+              <span className="hidden sm:inline">道具箱贴签与返场核对系统</span>
+              <span className="sm:hidden">道具箱管理</span>
+            </h1>
+            <div className="flex bg-primary-800 rounded-lg p-0.5">
+              <button
+                onClick={() => setViewMode('normal')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1.5 ${
+                  viewMode === 'normal'
+                    ? 'bg-white text-primary-900 shadow'
+                    : 'text-primary-200 hover:text-white'
+                }`}
+              >
+                <Package size={16} />
+                <span className="hidden sm:inline">管理模式</span>
+              </button>
+              <button
+                onClick={() => setViewMode('checklist')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1.5 ${
+                  viewMode === 'checklist'
+                    ? 'bg-white text-primary-900 shadow'
+                    : 'text-primary-200 hover:text-white'
+                }`}
+              >
+                <ListChecks size={16} />
+                <span className="hidden sm:inline">返场总表</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {viewMode === 'normal' && (
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="bg-primary-800 hover:bg-primary-700 text-white text-sm px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+              >
+                <Filter size={16} />
+                <span className="hidden sm:inline">筛选</span>
+                {hasActiveFilters && (
+                  <span className="w-2 h-2 bg-amber-400 rounded-full" />
+                )}
+                {showFilters ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            )}
+
             <button
-              onClick={() => setViewMode('normal')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1.5 ${
-                viewMode === 'normal'
-                  ? 'bg-white text-primary-900 shadow'
-                  : 'text-primary-200 hover:text-white'
-              }`}
+              onClick={handleAddBox}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 font-medium shadow-md shrink-0"
             >
-              <Package size={16} />
-              管理模式
-            </button>
-            <button
-              onClick={() => setViewMode('checklist')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1.5 ${
-                viewMode === 'checklist'
-                  ? 'bg-white text-primary-900 shadow'
-                  : 'text-primary-200 hover:text-white'
-              }`}
-            >
-              <ListChecks size={16} />
-              返场总表模式
+              <Plus size={16} />
+              新增道具箱
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {viewMode === 'normal' && (
-            <>
-              <div className="flex items-center gap-2">
-                <select
-                  value={filters.scene}
-                  onChange={(e) => setFilters({ scene: e.target.value })}
-                  className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">全部场次</option>
-                  {scenes.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filters.responsiblePerson}
-                  onChange={(e) => setFilters({ responsiblePerson: e.target.value })}
-                  className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">全部责任人</option>
-                  {persons.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filters.status}
-                  onChange={(e) => setFilters({ status: e.target.value as BoxStatus | '' })}
-                  className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">全部状态</option>
-                  {(Object.keys(STATUS_LABELS) as BoxStatus[]).map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filters.riskLevel}
-                  onChange={(e) => setFilters({ riskLevel: e.target.value as RiskLevel | '' })}
-                  className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">全部风险</option>
-                  {(Object.keys(RISK_LABELS) as RiskLevel[]).map((r) => (
-                    <option key={r} value={r}>
-                      {RISK_LABELS[r]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filters.handoverStatus}
-                  onChange={(e) => setFilters({ handoverStatus: e.target.value as HandoverStatus | '' })}
-                  className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">全部交接</option>
-                  {(Object.keys(HANDOVER_LABELS) as HandoverStatus[]).map((h) => (
-                    <option key={h} value={h}>
-                      {HANDOVER_LABELS[h]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filters.abnormalType}
-                  onChange={(e) => setFilters({ abnormalType: e.target.value as AbnormalType | '' })}
-                  className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">全部异常类型</option>
-                  {(Object.keys(ABNORMAL_TYPE_LABELS) as AbnormalType[]).map((a) => (
-                    <option key={a} value={a}>
-                      {ABNORMAL_TYPE_LABELS[a]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filters.processStatus}
-                  onChange={(e) => setFilters({ processStatus: e.target.value as ProcessStatus | '' })}
-                  className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">全部处理状态</option>
-                  {(Object.keys(PROCESS_STATUS_LABELS) as ProcessStatus[]).map((p) => (
-                    <option key={p} value={p}>
-                      {PROCESS_STATUS_LABELS[p]}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={filters.batchNumber}
-                  onChange={(e) => setFilters({ batchNumber: e.target.value })}
-                  placeholder="搜索批次号..."
-                  className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 w-32 placeholder-primary-400"
-                />
-                {hasActiveFilters && (
-                  <button
-                    onClick={resetFilters}
-                    className="text-primary-300 hover:text-white transition-colors flex items-center gap-1 text-sm"
-                  >
-                    <X size={14} />
-                    清除筛选
-                  </button>
-                )}
-              </div>
-
-              <div className="h-6 w-px bg-primary-700" />
-
-              <div className="flex items-center gap-2">
+        {viewMode === 'normal' && showFilters && (
+          <div className="mt-3 pt-3 border-t border-primary-700/50">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={filters.scene}
+                onChange={(e) => setFilters({ scene: e.target.value })}
+                className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 min-w-[100px]"
+              >
+                <option value="">全部场次</option>
+                {scenes.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <select
+                value={filters.responsiblePerson}
+                onChange={(e) => setFilters({ responsiblePerson: e.target.value })}
+                className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 min-w-[100px]"
+              >
+                <option value="">全部责任人</option>
+                {persons.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+              <select
+                value={filters.status}
+                onChange={(e) => setFilters({ status: e.target.value as BoxStatus | '' })}
+                className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 min-w-[100px]"
+              >
+                <option value="">全部状态</option>
+                {(Object.keys(STATUS_LABELS) as BoxStatus[]).map((s) => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+              <select
+                value={filters.riskLevel}
+                onChange={(e) => setFilters({ riskLevel: e.target.value as RiskLevel | '' })}
+                className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 min-w-[100px]"
+              >
+                <option value="">全部风险</option>
+                {(Object.keys(RISK_LABELS) as RiskLevel[]).map((r) => (
+                  <option key={r} value={r}>{RISK_LABELS[r]}</option>
+                ))}
+              </select>
+              <select
+                value={filters.handoverStatus}
+                onChange={(e) => setFilters({ handoverStatus: e.target.value as HandoverStatus | '' })}
+                className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 min-w-[100px]"
+              >
+                <option value="">全部交接</option>
+                {(Object.keys(HANDOVER_LABELS) as HandoverStatus[]).map((h) => (
+                  <option key={h} value={h}>{HANDOVER_LABELS[h]}</option>
+                ))}
+              </select>
+              <select
+                value={filters.abnormalType}
+                onChange={(e) => setFilters({ abnormalType: e.target.value as AbnormalType | '' })}
+                className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 min-w-[110px]"
+              >
+                <option value="">全部异常类型</option>
+                {(Object.keys(ABNORMAL_TYPE_LABELS) as AbnormalType[]).map((a) => (
+                  <option key={a} value={a}>{ABNORMAL_TYPE_LABELS[a]}</option>
+                ))}
+              </select>
+              <select
+                value={filters.processStatus}
+                onChange={(e) => setFilters({ processStatus: e.target.value as ProcessStatus | '' })}
+                className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 min-w-[110px]"
+              >
+                <option value="">全部处理状态</option>
+                {(Object.keys(PROCESS_STATUS_LABELS) as ProcessStatus[]).map((p) => (
+                  <option key={p} value={p}>{PROCESS_STATUS_LABELS[p]}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={filters.batchNumber}
+                onChange={(e) => setFilters({ batchNumber: e.target.value })}
+                placeholder="搜索批次号..."
+                className="bg-primary-800 border border-primary-700 text-white text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 w-32 placeholder-primary-400"
+              />
+              {hasActiveFilters && (
                 <button
-                  onClick={allSelected ? clearSelection : selectAll}
-                  className="bg-primary-800 hover:bg-primary-700 text-white text-sm px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+                  onClick={resetFilters}
+                  className="text-primary-300 hover:text-white transition-colors flex items-center gap-1 text-sm px-2 py-1.5"
                 >
-                  {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                  {allSelected ? '取消全选' : `全选 (${filteredCount})`}
+                  <X size={14} />
+                  清除筛选
                 </button>
-                {selectedBoxIds.length > 0 && (
-                  <>
-                    <div className="flex items-center gap-1 bg-primary-800 rounded-md p-0.5">
-                      <button
-                        onClick={() => handleBatchStatus('pending_pack')}
-                        className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
-                        title="待装箱"
-                      >
-                        待装箱
-                      </button>
-                      <button
-                        onClick={() => handleBatchStatus('pending_return')}
-                        className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
-                        title="待返场"
-                      >
-                        待返场
-                      </button>
-                      <button
-                        onClick={() => handleBatchStatus('missing_investigate')}
-                        className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
-                        title="缺件待查"
-                      >
-                        缺件待查
-                      </button>
-                      <button
-                        onClick={() => handleBatchStatus('ready_seal')}
-                        className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
-                        title="可封箱"
-                      >
-                        可封箱
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-1 bg-primary-800 rounded-md p-0.5 ml-1">
-                      <ArrowRightLeft size={14} className="text-primary-300 mx-1" />
-                      <button
-                        onClick={() => openBatchHandoverModal('completed')}
-                        className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
-                        title="标记已交接"
-                      >
-                        已交接
-                      </button>
-                      <button
-                        onClick={() => openBatchHandoverModal('abnormal')}
-                        className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
-                        title="标记异常交接"
-                      >
-                        异常交接
-                      </button>
-                      <button
-                        onClick={() => openBatchHandoverModal('completed')}
-                        className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors bg-teal-700"
-                        title="批量完成交接"
-                      >
-                        <ClipboardCheck size={12} className="inline mr-1" />
-                        批量完成交接
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+              )}
+            </div>
+          </div>
+        )}
 
-              <div className="h-6 w-px bg-primary-700" />
-
+        {viewMode === 'normal' && (
+          <div className="mt-3 pt-3 border-t border-primary-700/50">
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={handleAddBox}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 font-medium shadow-md"
+                onClick={selectAll}
+                className={`text-sm px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${
+                  allFilteredSelected
+                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                    : 'bg-primary-800 hover:bg-primary-700 text-white'
+                }`}
               >
-                <Plus size={16} />
-                新增道具箱
+                {allFilteredSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                {selectButtonLabel}
               </button>
 
-              <button
-                onClick={loadFromStorage}
-                className="text-primary-300 hover:text-white transition-colors"
-                title="重新加载数据"
-              >
-                <Filter size={16} />
-              </button>
-            </>
-          )}
-        </div>
+              {selectedBoxIds.length > 0 && (
+                <>
+                  {selectedOutOfFilter.length > 0 && (
+                    <button
+                      onClick={clearSelection}
+                      className="text-xs text-primary-300 hover:text-white transition-colors px-2 py-1"
+                      title="清空所有选中（含其他筛选范围）"
+                    >
+                      清空全部 ({selectedBoxIds.length})
+                    </button>
+                  )}
+                  <div className="h-5 w-px bg-primary-700 mx-1 hidden sm:block" />
+                  <div className="flex items-center gap-1 bg-primary-800 rounded-md p-0.5">
+                    <span className="px-2 py-1 text-xs text-primary-300 hidden md:inline">状态:</span>
+                    <button
+                      onClick={() => handleBatchStatus('pending_pack')}
+                      className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
+                      title="待装箱"
+                    >
+                      待装箱
+                    </button>
+                    <button
+                      onClick={() => handleBatchStatus('pending_return')}
+                      className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
+                      title="待返场"
+                    >
+                      待返场
+                    </button>
+                    <button
+                      onClick={() => handleBatchStatus('missing_investigate')}
+                      className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
+                      title="缺件待查"
+                    >
+                      缺件待查
+                    </button>
+                    <button
+                      onClick={() => handleBatchStatus('ready_seal')}
+                      className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
+                      title="可封箱"
+                    >
+                      可封箱
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 bg-primary-800 rounded-md p-0.5">
+                    <ArrowRightLeft size={14} className="text-primary-300 mx-1 hidden sm:block" />
+                    <span className="px-2 py-1 text-xs text-primary-300 hidden md:inline">交接:</span>
+                    <button
+                      onClick={() => openBatchHandoverModal('completed')}
+                      className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
+                      title="标记已交接"
+                    >
+                      已交接
+                    </button>
+                    <button
+                      onClick={() => openBatchHandoverModal('abnormal')}
+                      className="px-2.5 py-1 text-xs rounded hover:bg-primary-700 transition-colors"
+                      title="标记异常交接"
+                    >
+                      异常交接
+                    </button>
+                    <button
+                      onClick={() => openBatchHandoverModal('completed')}
+                      className="px-2.5 py-1 text-xs rounded hover:bg-teal-600 transition-colors bg-teal-700 text-white flex items-center gap-1"
+                      title="批量完成交接"
+                    >
+                      <ClipboardCheck size={12} />
+                      <span className="hidden sm:inline">批量交接</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {viewMode === 'normal' && selectedBoxIds.length > 0 && (
-        <div className="mt-3 text-sm text-primary-200 animate-fade-in">
-          已选择 <span className="font-semibold text-white">{selectedBoxIds.length}</span> 个道具箱
+        <div className="px-4 pb-3 md:px-6 text-sm text-primary-200">
+          <span>
+            已选择 <span className="font-semibold text-white">{selectedBoxIds.length}</span> 个道具箱
+          </span>
+          {selectedOutOfFilter.length > 0 && (
+            <span className="ml-2 text-amber-300">
+              （含其他筛选范围 {selectedOutOfFilter.length} 个）
+            </span>
+          )}
+          {!allFilteredSelected && filteredBoxes.length > 0 && selectedInFilter.length > 0 && (
+            <span className="ml-2 text-primary-300">
+              当前筛选范围已选 {selectedInFilter.length}/{filteredCount}
+            </span>
+          )}
         </div>
       )}
 
       {showBatchHandoverModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-slide-up">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-slide-up max-h-[90vh] overflow-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <ClipboardCheck className="text-teal-600" size={20} />
@@ -400,13 +443,13 @@ export function Toolbar() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   交接批次 <span className="text-rose-500">*</span>
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-col sm:flex-row">
                   <select
                     value={batchHandoverData.batchNumber}
                     onChange={(e) => setBatchHandoverData({ ...batchHandoverData, batchNumber: e.target.value })}
                     className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
-                    <option value="">选择或输入批次</option>
+                    <option value="">选择已有批次</option>
                     {batchNumbers.map((b) => (
                       <option key={b} value={b}>{b}</option>
                     ))}
@@ -415,7 +458,7 @@ export function Toolbar() {
                     type="text"
                     value={batchHandoverData.batchNumber}
                     onChange={(e) => setBatchHandoverData({ ...batchHandoverData, batchNumber: e.target.value })}
-                    placeholder="输入新批次"
+                    placeholder="或输入新批次号"
                     className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
                 </div>
@@ -425,34 +468,26 @@ export function Toolbar() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   交接人 <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <input
+                  type="text"
                   value={batchHandoverData.handoverPerson}
                   onChange={(e) => setBatchHandoverData({ ...batchHandoverData, handoverPerson: e.target.value })}
+                  placeholder="输入交接人姓名"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                >
-                  <option value="">请选择交接人</option>
-                  {persons.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                  <option value="赵管理员">赵管理员</option>
-                  <option value="钱管理员">钱管理员</option>
-                </select>
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   接收人 <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <input
+                  type="text"
                   value={batchHandoverData.receiverPerson}
                   onChange={(e) => setBatchHandoverData({ ...batchHandoverData, receiverPerson: e.target.value })}
+                  placeholder="输入接收人姓名"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                >
-                  <option value="">请选择接收人</option>
-                  <option value="仓管小王">仓管小王</option>
-                  <option value="仓管小李">仓管小李</option>
-                  <option value="仓管老张">仓管老张</option>
-                </select>
+                />
               </div>
 
               <div>

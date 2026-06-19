@@ -141,14 +141,30 @@ export function ChecklistView() {
       updateBox(box.id, {
         handoverStatus: 'pending',
         handoverTime: '',
-        handoverPerson: '',
-        receiverPerson: '',
-        batchNumber: '',
-        abnormalType: '',
-        processStatus: 'pending',
-        processNote: '',
       });
       return;
+    }
+
+    const hasRequiredFields =
+      box.batchNumber.trim() !== '' &&
+      box.handoverPerson.trim() !== '' &&
+      box.receiverPerson.trim() !== '';
+
+    if (status === 'abnormal') {
+      const hasAbnormalFields =
+        box.abnormalType !== '' &&
+        box.handoverNote.trim() !== '';
+      if (!hasRequiredFields || !hasAbnormalFields) {
+        handleBatchHandoverScene(box.scene);
+        alert(`道具箱「${box.boxNumber}」交接信息不完整，请在批量交接弹窗中填写完整信息。可单独为该箱子填写批次、交接人、接收人等信息后再提交。`);
+        return;
+      }
+    } else {
+      if (!hasRequiredFields) {
+        handleBatchHandoverScene(box.scene);
+        alert(`道具箱「${box.boxNumber}」缺少交接批次、交接人或接收人信息，请在批量交接弹窗中填写完整信息后提交。`);
+        return;
+      }
     }
 
     addHandoverRecord(box.id, {
@@ -156,6 +172,7 @@ export function ChecklistView() {
       handoverResult: status,
       handoverPerson: box.handoverPerson,
       receiverPerson: box.receiverPerson,
+      handoverNote: status !== 'abnormal' ? box.handoverNote : '',
       abnormalType: status === 'abnormal' ? box.abnormalType : '',
       abnormalNote: status === 'abnormal' ? box.handoverNote : '',
       processStatus: status === 'abnormal' ? box.processStatus : 'resolved',

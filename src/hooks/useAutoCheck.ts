@@ -4,12 +4,18 @@ import { generateId } from '@/utils/storage';
 const HIGH_RISK_THRESHOLD = 3;
 const LOAD_IMBALANCE_THRESHOLD = 0.5;
 
+const isNewOrIncompleteBox = (box: PropBox): boolean => {
+  return box.boxNumber.trim() === '' || box.contentSummary.trim() === '';
+};
+
 export const useAutoCheck = () => {
   const checkDuplicateBoxNumbers = (boxes: PropBox[]): Alert | null => {
     const boxNumberMap = new Map<string, string[]>();
     boxes.forEach((box) => {
-      const existing = boxNumberMap.get(box.boxNumber) || [];
-      boxNumberMap.set(box.boxNumber, [...existing, box.id]);
+      const trimmed = box.boxNumber.trim();
+      if (trimmed === '') return;
+      const existing = boxNumberMap.get(trimmed) || [];
+      boxNumberMap.set(trimmed, [...existing, box.id]);
     });
     const duplicates: string[] = [];
     boxNumberMap.forEach((ids, number) => {
@@ -35,7 +41,7 @@ export const useAutoCheck = () => {
 
   const checkMissingReturnNotes = (boxes: PropBox[]): Alert | null => {
     const missing = boxes.filter(
-      (box) => box.needsReturn && box.returnNote.trim() === ''
+      (box) => !isNewOrIncompleteBox(box) && box.needsReturn && box.returnNote.trim() === ''
     );
     if (missing.length > 0) {
       return {
@@ -52,6 +58,7 @@ export const useAutoCheck = () => {
   const checkHighRiskExcess = (boxes: PropBox[]): Alert | null => {
     const sceneMap = new Map<string, PropBox[]>();
     boxes.forEach((box) => {
+      if (isNewOrIncompleteBox(box)) return;
       if (box.riskLevel === 'high') {
         const existing = sceneMap.get(box.scene) || [];
         sceneMap.set(box.scene, [...existing, box]);
@@ -80,8 +87,11 @@ export const useAutoCheck = () => {
   const checkUnbalancedLoad = (boxes: PropBox[]): Alert | null => {
     const personMap = new Map<string, number>();
     boxes.forEach((box) => {
-      const count = personMap.get(box.responsiblePerson) || 0;
-      personMap.set(box.responsiblePerson, count + 1);
+      if (isNewOrIncompleteBox(box)) return;
+      const person = box.responsiblePerson.trim();
+      if (!person) return;
+      const count = personMap.get(person) || 0;
+      personMap.set(person, count + 1);
     });
     const counts = Array.from(personMap.values());
     if (counts.length < 2) return null;
@@ -98,7 +108,7 @@ export const useAutoCheck = () => {
       const most = entries[0];
       const least = entries[entries.length - 1];
       const overloadedIds = boxes
-        .filter((b) => b.responsiblePerson === most[0])
+        .filter((b) => !isNewOrIncompleteBox(b) && b.responsiblePerson === most[0])
         .map((b) => b.id);
       return {
         id: generateId(),
@@ -113,7 +123,7 @@ export const useAutoCheck = () => {
 
   const checkCheckedNotHandedOver = (boxes: PropBox[]): Alert | null => {
     const notHanded = boxes.filter(
-      (box) => box.needsReturn && box.isChecked && box.handoverStatus === 'pending'
+      (box) => !isNewOrIncompleteBox(box) && box.needsReturn && box.isChecked && box.handoverStatus === 'pending'
     );
     if (notHanded.length > 0) {
       return {
@@ -129,7 +139,7 @@ export const useAutoCheck = () => {
 
   const checkAbnormalWithoutNote = (boxes: PropBox[]): Alert | null => {
     const noNote = boxes.filter(
-      (box) => box.handoverStatus === 'abnormal' && box.handoverNote.trim() === ''
+      (box) => !isNewOrIncompleteBox(box) && box.handoverStatus === 'abnormal' && box.handoverNote.trim() === ''
     );
     if (noNote.length > 0) {
       return {

@@ -21,6 +21,7 @@ export interface HandoverRecord {
   handoverResult: HandoverStatus;
   handoverPerson: string;
   receiverPerson: string;
+  handoverNote: string;
   abnormalType: AbnormalType | '';
   abnormalNote: string;
   processStatus: ProcessStatus;
