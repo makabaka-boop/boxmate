@@ -6,6 +6,9 @@ import { STATUS_LABELS, RISK_LABELS, HANDOVER_LABELS, HANDOVER_COLORS, ABNORMAL_
 import type { BoxStatus, RiskLevel, HandoverStatus, AbnormalType, ProcessStatus, HandoverRecord } from '@/types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+const NEW_SCENE_OPTION = '__new_scene__';
+const NEW_PERSON_OPTION = '__new_person__';
+
 export function DetailEditor() {
   const {
     boxes,
@@ -24,12 +27,18 @@ export function DetailEditor() {
     handoverResult: 'completed',
     handoverPerson: '',
     receiverPerson: '',
+    handoverNote: '',
     abnormalType: '',
     abnormalNote: '',
     processStatus: 'resolved',
     processNote: '',
     createdBy: '',
   });
+
+  const [newSceneInput, setNewSceneInput] = useState('');
+  const [showNewSceneDialog, setShowNewSceneDialog] = useState(false);
+  const [newPersonInput, setNewPersonInput] = useState('');
+  const [showNewPersonDialog, setShowNewPersonDialog] = useState(false);
 
   const activeBox = useMemo(
     () => boxes.find((b) => b.id === activeBoxId) || null,
@@ -44,11 +53,11 @@ export function DetailEditor() {
   }, [activeBoxId]);
 
   const scenes = useMemo(
-    () => Array.from(new Set(boxes.map((b) => b.scene))),
+    () => Array.from(new Set(boxes.map((b) => b.scene).filter(Boolean))),
     [boxes]
   );
   const persons = useMemo(
-    () => Array.from(new Set(boxes.map((b) => b.responsiblePerson))),
+    () => Array.from(new Set(boxes.map((b) => b.responsiblePerson).filter(Boolean))),
     [boxes]
   );
 
@@ -58,6 +67,48 @@ export function DetailEditor() {
     setHasChanges(true);
   };
 
+  const handleSceneChange = (value: string) => {
+    if (!activeBox) return;
+    if (value === NEW_SCENE_OPTION) {
+      setNewSceneInput('');
+      setShowNewSceneDialog(true);
+      return;
+    }
+    handleChange('scene', value);
+  };
+
+  const handlePersonChange = (value: string) => {
+    if (!activeBox) return;
+    if (value === NEW_PERSON_OPTION) {
+      setNewPersonInput('');
+      setShowNewPersonDialog(true);
+      return;
+    }
+    handleChange('responsiblePerson', value);
+  };
+
+  const confirmNewScene = () => {
+    const name = newSceneInput.trim();
+    if (!name) {
+      alert('请输入场次名称');
+      return;
+    }
+    handleChange('scene', name);
+    setShowNewSceneDialog(false);
+    setNewSceneInput('');
+  };
+
+  const confirmNewPerson = () => {
+    const name = newPersonInput.trim();
+    if (!name) {
+      alert('请输入责任人姓名');
+      return;
+    }
+    handleChange('responsiblePerson', name);
+    setShowNewPersonDialog(false);
+    setNewPersonInput('');
+  };
+
   const handleHandoverStatusChange = (status: HandoverStatus) => {
     if (!activeBox) return;
 
@@ -65,15 +116,55 @@ export function DetailEditor() {
       updateBox(activeBox.id, {
         handoverStatus: 'pending',
         handoverTime: '',
-        handoverPerson: '',
-        receiverPerson: '',
-        batchNumber: '',
-        abnormalType: '',
-        processStatus: 'pending',
-        processNote: '',
       });
       setHasChanges(true);
       return;
+    }
+
+    const hasRequiredFields =
+      activeBox.batchNumber.trim() !== '' &&
+      activeBox.handoverPerson.trim() !== '' &&
+      activeBox.receiverPerson.trim() !== '';
+
+    if (status === 'abnormal') {
+      const hasAbnormalFields =
+        activeBox.abnormalType !== '' &&
+        activeBox.handoverNote.trim() !== '';
+      if (!hasRequiredFields || !hasAbnormalFields) {
+        setShowNewHandoverForm(true);
+        setNewHandoverRecord({
+          batchNumber: activeBox.batchNumber || '',
+          handoverResult: 'abnormal',
+          handoverPerson: activeBox.handoverPerson || '',
+          receiverPerson: activeBox.receiverPerson || '',
+          handoverNote: '',
+          abnormalType: activeBox.abnormalType || '',
+          abnormalNote: activeBox.handoverNote || '',
+          processStatus: activeBox.processStatus || 'pending',
+          processNote: activeBox.processNote || '',
+          createdBy: activeBox.handoverPerson || activeBox.responsiblePerson || '',
+        });
+        alert('请在下方"新增交接记录"表单中完整填写异常交接信息后提交');
+        return;
+      }
+    } else {
+      if (!hasRequiredFields) {
+        setShowNewHandoverForm(true);
+        setNewHandoverRecord({
+          batchNumber: activeBox.batchNumber || '',
+          handoverResult: 'completed',
+          handoverPerson: activeBox.handoverPerson || '',
+          receiverPerson: activeBox.receiverPerson || '',
+          handoverNote: activeBox.handoverNote || '',
+          abnormalType: '',
+          abnormalNote: '',
+          processStatus: 'resolved',
+          processNote: '',
+          createdBy: activeBox.handoverPerson || activeBox.responsiblePerson || '',
+        });
+        alert('请先填写交接批次、交接人和接收人，或通过"新增交接记录"表单提交完整信息');
+        return;
+      }
     }
 
     addHandoverRecord(activeBox.id, {
@@ -81,6 +172,7 @@ export function DetailEditor() {
       handoverResult: status,
       handoverPerson: activeBox.handoverPerson,
       receiverPerson: activeBox.receiverPerson,
+      handoverNote: status !== 'abnormal' ? activeBox.handoverNote : '',
       abnormalType: status === 'abnormal' ? activeBox.abnormalType : '',
       abnormalNote: status === 'abnormal' ? activeBox.handoverNote : '',
       processStatus: status === 'abnormal' ? activeBox.processStatus : 'resolved',
@@ -162,15 +254,16 @@ export function DetailEditor() {
             </label>
             <select
               value={activeBox.scene}
-              onChange={(e) => handleChange('scene', e.target.value)}
+              onChange={(e) => handleSceneChange(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
+              <option value="" disabled>请选择场次</option>
               {scenes.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
               ))}
-              <option value="新增场次...">新增场次...</option>
+              <option value={NEW_SCENE_OPTION}>+ 新增场次</option>
             </select>
           </div>
 
@@ -245,15 +338,16 @@ export function DetailEditor() {
             </label>
             <select
               value={activeBox.responsiblePerson}
-              onChange={(e) => handleChange('responsiblePerson', e.target.value)}
+              onChange={(e) => handlePersonChange(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
+              <option value="" disabled>请选择责任人</option>
               {persons.map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
               ))}
-              <option value="新增责任人...">新增责任人...</option>
+              <option value={NEW_PERSON_OPTION}>+ 新增责任人</option>
             </select>
           </div>
 
@@ -297,12 +391,12 @@ export function DetailEditor() {
                   placeholder="返场时需要注意的事项..."
                   rows={2}
                   className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none ${
-                    activeBox.returnNote.trim() === ''
+                    activeBox.returnNote.trim() === '' && activeBox.boxNumber.trim() !== '' && activeBox.contentSummary.trim() !== ''
                       ? 'border-amber-300'
                       : 'border-slate-300'
                   }`}
                 />
-                {activeBox.returnNote.trim() === '' && (
+                {activeBox.returnNote.trim() === '' && activeBox.boxNumber.trim() !== '' && activeBox.contentSummary.trim() !== '' && (
                   <p className="text-xs text-amber-600 mt-1">
                     ⚠ 建议填写返场备注以确保核对无误
                   </p>
@@ -320,16 +414,18 @@ export function DetailEditor() {
               <button
                 onClick={() => {
                   setShowNewHandoverForm(true);
+                  const isAbnormal = activeBox.handoverStatus === 'abnormal';
                   setNewHandoverRecord({
-                    batchNumber: '',
-                    handoverResult: 'completed',
-                    handoverPerson: '',
-                    receiverPerson: '',
-                    abnormalType: '',
-                    abnormalNote: '',
-                    processStatus: 'resolved',
-                    processNote: '',
-                    createdBy: '',
+                    batchNumber: activeBox.batchNumber || '',
+                    handoverResult: activeBox.handoverStatus !== 'pending' ? activeBox.handoverStatus : 'completed',
+                    handoverPerson: activeBox.handoverPerson || '',
+                    receiverPerson: activeBox.receiverPerson || '',
+                    handoverNote: isAbnormal ? '' : activeBox.handoverNote || '',
+                    abnormalType: isAbnormal ? activeBox.abnormalType : '',
+                    abnormalNote: isAbnormal ? activeBox.handoverNote || '' : '',
+                    processStatus: isAbnormal ? (activeBox.processStatus || 'pending') : 'resolved',
+                    processNote: isAbnormal ? activeBox.processNote || '' : '',
+                    createdBy: activeBox.handoverPerson || '',
                   });
                 }}
                 className="flex items-center gap-1 px-2.5 py-1 text-xs bg-teal-100 text-teal-700 rounded-md hover:bg-teal-200 transition-colors font-medium"
@@ -369,7 +465,18 @@ export function DetailEditor() {
                     </label>
                     <select
                       value={newHandoverRecord.handoverResult || 'completed'}
-                      onChange={(e) => setNewHandoverRecord({ ...newHandoverRecord, handoverResult: e.target.value as HandoverStatus })}
+                      onChange={(e) => {
+                        const result = e.target.value as HandoverStatus;
+                        setNewHandoverRecord({
+                          ...newHandoverRecord,
+                          handoverResult: result,
+                          handoverNote: result === 'abnormal' ? '' : (newHandoverRecord.handoverNote || ''),
+                          abnormalNote: result === 'abnormal' ? (newHandoverRecord.abnormalNote || '') : '',
+                          abnormalType: result === 'abnormal' ? newHandoverRecord.abnormalType : '',
+                          processStatus: result === 'abnormal' ? 'pending' : 'resolved',
+                          processNote: result === 'abnormal' ? (newHandoverRecord.processNote || '') : '',
+                        });
+                      }}
                       className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     >
                       {(Object.keys(HANDOVER_LABELS) as HandoverStatus[]).filter(h => h !== 'pending').map((h) => (
@@ -464,6 +571,20 @@ export function DetailEditor() {
                       </div>
                     </>
                   )}
+                  {newHandoverRecord.handoverResult === 'completed' && (
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">
+                        交接备注
+                      </label>
+                      <textarea
+                        value={newHandoverRecord.handoverNote || ''}
+                        onChange={(e) => setNewHandoverRecord({ ...newHandoverRecord, handoverNote: e.target.value })}
+                        placeholder="交接备注信息（可选）..."
+                        rows={2}
+                        className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="flex justify-end gap-2 mt-4">
                   <button
@@ -474,15 +595,27 @@ export function DetailEditor() {
                   </button>
                   <button
                     onClick={() => {
-                      if (!newHandoverRecord.batchNumber || !newHandoverRecord.handoverPerson || !newHandoverRecord.receiverPerson) {
+                      if (!newHandoverRecord.batchNumber?.trim() || !newHandoverRecord.handoverPerson?.trim() || !newHandoverRecord.receiverPerson?.trim()) {
                         alert('请填写交接批次、交接人和接收人');
                         return;
                       }
-                      if (newHandoverRecord.handoverResult === 'abnormal' && (!newHandoverRecord.abnormalType || !newHandoverRecord.abnormalNote)) {
+                      const isAbnormal = newHandoverRecord.handoverResult === 'abnormal';
+                      if (isAbnormal && (!newHandoverRecord.abnormalType || !newHandoverRecord.abnormalNote?.trim())) {
                         alert('异常交接必须填写异常类型和异常说明');
                         return;
                       }
-                      addHandoverRecord(activeBox.id, newHandoverRecord as Omit<HandoverRecord, 'id' | 'boxId' | 'handoverTime'>);
+                      addHandoverRecord(activeBox.id, {
+                        batchNumber: newHandoverRecord.batchNumber!.trim(),
+                        handoverResult: newHandoverRecord.handoverResult as HandoverStatus,
+                        handoverPerson: newHandoverRecord.handoverPerson!.trim(),
+                        receiverPerson: newHandoverRecord.receiverPerson!.trim(),
+                        handoverNote: isAbnormal ? '' : (newHandoverRecord.handoverNote?.trim() || ''),
+                        abnormalType: isAbnormal ? newHandoverRecord.abnormalType : '',
+                        abnormalNote: isAbnormal ? newHandoverRecord.abnormalNote?.trim() || '' : '',
+                        processStatus: (newHandoverRecord.processStatus as ProcessStatus) || (isAbnormal ? 'pending' : 'resolved'),
+                        processNote: isAbnormal ? (newHandoverRecord.processNote?.trim() || '') : '',
+                        createdBy: newHandoverRecord.handoverPerson!.trim(),
+                      });
                       setShowNewHandoverForm(false);
                       setHasChanges(true);
                     }}
@@ -606,7 +739,7 @@ export function DetailEditor() {
                 </>
               )}
 
-              <div className={activeBox.handoverStatus === 'abnormal' ? 'col-span-2' : activeBox.handoverTime ? 'col-span-2' : 'col-span-2'}>
+              <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   {activeBox.handoverStatus === 'abnormal' ? '异常说明' : '交接备注'}
                   {activeBox.handoverStatus === 'abnormal' && (
@@ -656,63 +789,83 @@ export function DetailEditor() {
                   <span className="text-xs text-slate-400">({activeBox.handoverRecords.length} 条)</span>
                 </div>
                 <div className="space-y-3 max-h-48 overflow-auto">
-                  {[...activeBox.handoverRecords].reverse().map((record, index) => (
-                    <div
-                      key={record.id}
-                      className="bg-slate-50 border border-slate-200 rounded-lg p-3"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${HANDOVER_COLORS[record.handoverResult]}`}>
-                            {HANDOVER_LABELS[record.handoverResult]}
-                          </span>
-                          {record.batchNumber && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-slate-200 text-slate-700 rounded">
-                              <Layers size={10} />
-                              {record.batchNumber}
+                  {[...activeBox.handoverRecords].reverse().map((record, index) => {
+                    const isLatest = index === 0;
+                    return (
+                      <div
+                        key={record.id}
+                        className={`border rounded-lg p-3 ${isLatest ? 'bg-teal-50/50 border-teal-200' : 'bg-slate-50 border-slate-200'}`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border ${HANDOVER_COLORS[record.handoverResult]}`}>
+                              {HANDOVER_LABELS[record.handoverResult]}
                             </span>
-                          )}
-                        </div>
-                        <span className="text-xs text-slate-400">
-                          {new Date(record.handoverTime).toLocaleString('zh-CN')}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
-                        <div className="flex items-center gap-1">
-                          <User size={10} className="text-slate-400" />
-                          交接: {record.handoverPerson}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <UserCheck size={10} className="text-slate-400" />
-                          接收: {record.receiverPerson}
-                        </div>
-                      </div>
-                      {record.abnormalType && (
-                        <div className="mt-2 pt-2 border-t border-slate-200">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${ABNORMAL_TYPE_COLORS[record.abnormalType]}`}>
-                              <AlertOctagon size={8} className="mr-0.5" />
-                              {ABNORMAL_TYPE_LABELS[record.abnormalType]}
-                            </span>
-                            <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${PROCESS_STATUS_COLORS[record.processStatus]}`}>
-                              {PROCESS_STATUS_LABELS[record.processStatus]}
-                            </span>
+                            {record.batchNumber && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-slate-200 text-slate-700 rounded">
+                                <Layers size={10} />
+                                {record.batchNumber}
+                              </span>
+                            )}
+                            {isLatest && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-700 rounded">
+                                当前
+                              </span>
+                            )}
                           </div>
-                          {record.abnormalNote && (
-                            <p className="text-xs text-rose-600 mt-1">
-                              <AlertTriangle size={10} className="inline mr-1" />
-                              {record.abnormalNote}
-                            </p>
-                          )}
-                          {record.processNote && (
-                            <p className="text-xs text-slate-500 mt-1">
-                              处理: {record.processNote}
-                            </p>
-                          )}
+                          <span className="text-xs text-slate-400">
+                            {new Date(record.handoverTime).toLocaleString('zh-CN')}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                          <div className="flex items-center gap-1">
+                            <User size={10} className="text-slate-400" />
+                            交接: {record.handoverPerson || '-'}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <UserCheck size={10} className="text-slate-400" />
+                            接收: {record.receiverPerson || '-'}
+                          </div>
+                        </div>
+                        {record.handoverNote && record.handoverResult === 'completed' && (
+                          <p className="text-xs text-slate-600 mt-2 pt-2 border-t border-slate-200">
+                            备注: {record.handoverNote}
+                          </p>
+                        )}
+                        {record.abnormalType && (
+                          <div className="mt-2 pt-2 border-t border-slate-200">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${ABNORMAL_TYPE_COLORS[record.abnormalType]}`}>
+                                <AlertOctagon size={8} className="mr-0.5" />
+                                {ABNORMAL_TYPE_LABELS[record.abnormalType]}
+                              </span>
+                              {record.processStatus && (
+                                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${PROCESS_STATUS_COLORS[record.processStatus] || PROCESS_STATUS_COLORS.pending}`}>
+                                  {PROCESS_STATUS_LABELS[record.processStatus] || PROCESS_STATUS_LABELS.pending}
+                                </span>
+                              )}
+                            </div>
+                            {record.abnormalNote && (
+                              <p className="text-xs text-rose-600 mt-1">
+                                <AlertTriangle size={10} className="inline mr-1" />
+                                {record.abnormalNote}
+                              </p>
+                            )}
+                            {record.processNote && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                处理: {record.processNote}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {record.createdBy && (
+                          <div className="mt-2 text-[10px] text-slate-400">
+                            记录人: {record.createdBy}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -728,6 +881,68 @@ export function DetailEditor() {
           </span>
         )}
       </div>
+
+      {showNewSceneDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">新增场次</h3>
+            <input
+              type="text"
+              value={newSceneInput}
+              onChange={(e) => setNewSceneInput(e.target.value)}
+              placeholder="请输入场次名称，如「第四场」"
+              autoFocus
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent mb-4"
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmNewScene(); }}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setShowNewSceneDialog(false); setNewSceneInput(''); }}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmNewScene}
+                className="px-4 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-500 transition-colors font-medium"
+              >
+                确认添加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNewPersonDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">新增责任人</h3>
+            <input
+              type="text"
+              value={newPersonInput}
+              onChange={(e) => setNewPersonInput(e.target.value)}
+              placeholder="请输入责任人姓名"
+              autoFocus
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent mb-4"
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmNewPerson(); }}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setShowNewPersonDialog(false); setNewPersonInput(''); }}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmNewPerson}
+                className="px-4 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-500 transition-colors font-medium"
+              >
+                确认添加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

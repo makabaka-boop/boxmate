@@ -15,9 +15,10 @@ const createHandoverRecord = (
   handoverResult: data.handoverResult || 'completed',
   handoverPerson: data.handoverPerson || '赵管理员',
   receiverPerson: data.receiverPerson || '仓管小王',
+  handoverNote: data.handoverNote || (data.handoverResult !== 'abnormal' ? (data.abnormalNote || '') : ''),
   abnormalType: data.abnormalType || '',
   abnormalNote: data.abnormalNote || '',
-  processStatus: data.processStatus || 'resolved',
+  processStatus: data.processStatus || (data.handoverResult === 'abnormal' ? 'pending' : 'resolved'),
   processNote: data.processNote || '',
   handoverTime: data.handoverTime || yesterday,
   processedAt: data.processedAt || yesterday,
@@ -341,13 +342,15 @@ export const mockBoxes: PropBox[] = [
 
 mockBoxes.forEach((box) => {
   if (box.handoverStatus !== 'pending') {
+    const isAbnormal = box.handoverStatus === 'abnormal';
     const record = createHandoverRecord(box.id, {
       batchNumber: box.batchNumber,
       handoverResult: box.handoverStatus,
       handoverPerson: box.handoverPerson,
       receiverPerson: box.receiverPerson,
+      handoverNote: isAbnormal ? '' : box.handoverNote,
       abnormalType: box.abnormalType,
-      abnormalNote: box.handoverNote,
+      abnormalNote: isAbnormal ? box.handoverNote : '',
       processStatus: box.processStatus,
       processNote: box.processNote,
       handoverTime: box.handoverTime || yesterday,
